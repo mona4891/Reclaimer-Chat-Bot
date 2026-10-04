@@ -1,0 +1,8 @@
+requests
+websocket-client
+ddgs
+pygame
+gtts
+flask
+flask-cors
+discord.py

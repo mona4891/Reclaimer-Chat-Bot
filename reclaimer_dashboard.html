@@ -1,0 +1,1675 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cortana Bot Dashboard - Complete Control</title>
+    <!-- Talks to the bot's local API on http://localhost:5000. The owner key is
+         never stored in this file: you are asked for it once and it is kept in your browser. -->
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
+            color: #fff;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5rem;
+            color: #00d4ff;
+            text-shadow: 0 0 10px rgba(0,212,255,0.5);
+        }
+        h2 {
+            margin: 25px 0 15px 0;
+            color: #00d4ff;
+            border-bottom: 2px solid #00d4ff;
+            padding-bottom: 8px;
+            font-size: 1.3rem;
+        }
+        h3 {
+            margin: 15px 0 10px 0;
+            color: #aaa;
+            font-size: 1rem;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+        .stat-card {
+            background: rgba(255,255,255,0.08);
+            border-radius: 12px;
+            padding: 15px;
+            text-align: center;
+            backdrop-filter: blur(10px);
+            transition: transform 0.2s;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        .stat-card:hover {
+            transform: translateY(-3px);
+            background: rgba(255,255,255,0.12);
+        }
+        .stat-card h3 {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #aaa;
+            margin-bottom: 8px;
+        }
+        .stat-card .value {
+            font-size: 1.6rem;
+            font-weight: bold;
+            color: #00d4ff;
+        }
+        .online { color: #00ff88; }
+        .offline { color: #ff4444; }
+
+        .toggle-switch {
+            width: 50px;
+            height: 24px;
+            background: #ff4444;
+            border-radius: 30px;
+            display: inline-block;
+            position: relative;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        .toggle-switch.active {
+            background: #00ff88;
+        }
+        .toggle-switch .slider {
+            width: 20px;
+            height: 20px;
+            background: white;
+            border-radius: 50%;
+            position: absolute;
+            top: 2px;
+            left: 3px;
+            transition: left 0.3s;
+        }
+        .toggle-switch.active .slider {
+            left: 27px;
+        }
+
+        .table-container {
+            width: 100%;
+            overflow-x: auto;
+            background: rgba(255,255,255,0.05);
+            border-radius: 12px;
+            margin-bottom: 20px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 700px;
+        }
+        th, td {
+            padding: 12px 12px;
+            text-align: left;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+        }
+        th {
+            background: rgba(0,212,255,0.15);
+            font-weight: 600;
+            font-size: 0.85rem;
+        }
+        tr:hover {
+            background: rgba(255,255,255,0.05);
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+        .btn {
+            padding: 5px 10px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.75rem;
+            transition: all 0.2s;
+            font-weight: 500;
+        }
+        .btn:hover {
+            opacity: 0.8;
+            transform: scale(0.98);
+        }
+        .btn-kick { background: #ffa500; color: #1a1a2e; }
+        .btn-ban { background: #ff4444; color: white; }
+        .btn-tempban { background: #ff6666; color: white; }
+        .btn-mute { background: #888; color: white; }
+        .btn-unmute { background: #00ff88; color: #1a1a2e; }
+        .btn-warn { background: #ffcc00; color: #1a1a2e; }
+        .btn-clearwarn { background: #ff9933; color: #1a1a2e; }
+        .btn-primary { background: #00d4ff; color: #1a1a2e; }
+        .btn-danger { background: #dc3545; color: white; }
+        .btn-success { background: #28a745; color: white; }
+        .btn-info { background: #17a2b8; color: white; }
+
+        .command-input {
+            display: flex;
+            gap: 10px;
+            margin: 15px 0;
+        }
+        .command-input input, .command-input select {
+            flex: 1;
+            padding: 10px 12px;
+            border: none;
+            border-radius: 8px;
+            background: rgba(255,255,255,0.1);
+            color: #fff;
+            font-size: 0.9rem;
+        }
+        .command-input input:focus, .command-input select:focus {
+            outline: none;
+            background: rgba(255,255,255,0.15);
+        }
+        .command-input button {
+            padding: 10px 20px;
+            background: #00d4ff;
+            border: none;
+            border-radius: 8px;
+            color: #1a1a2e;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+        .feature-card {
+            background: rgba(255,255,255,0.05);
+            border-radius: 10px;
+            padding: 12px 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: all 0.2s;
+        }
+        .feature-card:hover {
+            background: rgba(255,255,255,0.1);
+        }
+        .feature-card span {
+            font-size: 0.85rem;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #aaa;
+        }
+
+        .tab-buttons {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 25px;
+            flex-wrap: wrap;
+        }
+        .tab-btn {
+            padding: 10px 22px;
+            background: rgba(255,255,255,0.08);
+            border: none;
+            border-radius: 30px;
+            color: white;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 0.9rem;
+        }
+        .tab-btn:hover {
+            background: rgba(255,255,255,0.15);
+        }
+        .tab-btn.active {
+            background: #00d4ff;
+            color: #1a1a2e;
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .modal-content {
+            background: #1e1e2e;
+            padding: 25px;
+            border-radius: 15px;
+            min-width: 320px;
+            text-align: center;
+            border: 1px solid #00d4ff;
+        }
+        .modal-content input, .modal-content textarea {
+            padding: 10px;
+            margin: 10px 0;
+            width: 100%;
+            border-radius: 8px;
+            border: none;
+            background: rgba(255,255,255,0.1);
+            color: white;
+        }
+        .modal-content button {
+            margin: 5px;
+            padding: 8px 16px;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.7rem;
+            font-weight: bold;
+        }
+        .status-on { background: #00ff88; color: #1a1a2e; }
+        .status-off { background: #ff4444; color: white; }
+
+        .section {
+            background: rgba(255,255,255,0.03);
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+
+        .small-text {
+            font-size: 0.75rem;
+            color: #888;
+        }
+
+        hr {
+            border-color: rgba(255,255,255,0.1);
+            margin: 15px 0;
+        }
+
+        /* ── Added for game control / live player data / kill feed ── */
+        .btn-warning { background: #ffcc00; color: #1a1a2e; }
+        .btn-secondary { background: rgba(255,255,255,0.14); color: #fff; }
+        .btn-vote { background: #7c5cff; color: white; }
+        .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .btn-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; align-items: center; }
+        .btn-row .btn { padding: 9px 16px; font-size: 0.85rem; }
+        .stat-card .value.small { font-size: 1.05rem; word-break: break-word; }
+        .stat-card.vote-active { border-color: #7c5cff; background: rgba(124,92,255,0.18); }
+        .hint { font-size: 0.8rem; color: #9aa; margin: 4px 0 12px 0; line-height: 1.45; max-width: 90ch; }
+        .hint strong { color: #ffa500; font-weight: 600; }
+        .field-label { display: block; font-size: 0.8rem; color: #aaa; margin: 10px 0 4px 2px; }
+        .command-input input[type="number"] { max-width: 140px; flex: 0 0 140px; }
+        .chip-box { display: flex; flex-wrap: wrap; gap: 6px; max-height: 120px; overflow-y: auto; margin: 6px 0 14px 0; }
+        .chip { padding: 4px 11px; border-radius: 14px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12); color: #fff; font-size: 0.78rem; cursor: pointer; }
+        .chip:hover { background: rgba(0,212,255,0.25); border-color: #00d4ff; }
+        .result-line { min-height: 1.4em; margin: 8px 0 0 0; font-size: 0.9rem; color: #00d4ff; }
+        .result-line.err { color: #ff7777; }
+        .two-col { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 20px; }
+        .pill { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.7rem; font-weight: bold; }
+        .pill-dead { background: #ff4444; color: white; }
+        .pill-alive { background: #00ff88; color: #1a1a2e; }
+        .vitals { min-width: 110px; }
+        .vitals .bar { height: 5px; border-radius: 3px; background: rgba(255,255,255,0.12); overflow: hidden; margin-top: 3px; }
+        .vitals .bar > div { height: 100%; }
+        .vitals .hp { background: #ff5d6c; }
+        .vitals .sh { background: #00d4ff; }
+        .vitals .nums { font-size: 0.75rem; color: #ccc; }
+        .kill-feed td.arrow { color: #888; text-align: center; width: 40px; }
+        .kill-feed .suicide { color: #ffa500; }
+        .key-bar { display: flex; align-items: center; justify-content: center; gap: 12px; margin: -18px 0 22px 0; flex-wrap: wrap; }
+        .toast {
+            position: fixed; right: 20px; bottom: 20px; max-width: 440px; z-index: 2000;
+            padding: 12px 16px; border-radius: 10px; background: #1e1e2e; color: #fff;
+            border: 1px solid #00ff88; border-left-width: 5px; font-size: 0.88rem;
+            box-shadow: 0 6px 24px rgba(0,0,0,0.5);
+            opacity: 0; transform: translateY(10px); pointer-events: none;
+            transition: opacity 0.2s, transform 0.2s;
+        }
+        .toast.show { opacity: 1; transform: translateY(0); }
+        .toast.err { border-color: #ff4444; }
+        @media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🤖 Cortana Bot Dashboard</h1>
+        <div class="key-bar">
+            <button class="btn btn-secondary" onclick="changeKey()">🔑 Set dashboard key</button>
+            <span class="small-text" id="keyState"></span>
+        </div>
+
+        <!-- Tab Navigation -->
+        <!-- Game Control tab: newer Reclaimer builds can run the game from
+             RCON (map/mode/load/nextmap, teams, votes), so it's back. Still
+             no Rotation tab — the bot doesn't drive a rotation. -->
+        <div class="tab-buttons">
+            <button class="tab-btn active" data-tab="server" onclick="showTab('server')">📊 Server Status</button>
+            <button class="tab-btn" data-tab="players" onclick="showTab('players')">👥 Players</button>
+            <button class="tab-btn" data-tab="game" onclick="showTab('game')">🎮 Game Control</button>
+            <button class="tab-btn" data-tab="moderation" onclick="showTab('moderation')">🛡️ Moderation</button>
+            <button class="tab-btn" data-tab="settings" onclick="showTab('settings')">⚙️ Settings</button>
+            <button class="tab-btn" data-tab="commands" onclick="showTab('commands')">⌨️ Commands</button>
+        </div>
+
+        <!-- Server Status Tab -->
+        <div id="tab-server" class="tab-content active">
+            <div class="stats-grid" id="stats">
+                <div class="stat-card">
+                    <h3>Bot Status</h3>
+                    <div class="value" id="botStatus">--</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Players Online</h3>
+                    <div class="value" id="playerCount">--</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Current Map</h3>
+                    <div class="value" id="currentMap">--</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Game Status</h3>
+                    <div class="value" id="gameStatus">--</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Active Provider</h3>
+                    <div class="value" id="activeProvider">--</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Moderators</h3>
+                    <div class="value" id="modCount">--</div>
+                </div>
+                <div class="stat-card">
+                    <h3>RCON Link</h3>
+                    <div class="value" id="rconStatus">--</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Server Name</h3>
+                    <div class="value small" id="serverName">--</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Game Mode</h3>
+                    <div class="value" id="currentMode">--</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Next Game</h3>
+                    <div class="value small" id="nextGame">--</div>
+                </div>
+                <div class="stat-card" id="voteCard">
+                    <h3>Active Vote</h3>
+                    <div class="value small" id="activeVote">--</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Join Password</h3>
+                    <div class="value" id="passwordState">--</div>
+                </div>
+            </div>
+
+            <h2>🤖 Bot Features</h2>
+            <div class="feature-grid">
+                <div class="feature-card"><span>🤖 AutoMod</span><div class="toggle-switch" id="toggle-automod" onclick="toggleFeature('automod')"><div class="slider"></div></div></div>
+                <div class="feature-card"><span>💤 AFK Kick</span><div class="toggle-switch" id="toggle-afk" onclick="toggleFeature('afk')"><div class="slider"></div></div></div>
+                <div class="feature-card"><span>📣 Callouts</span><div class="toggle-switch" id="toggle-callouts" onclick="toggleFeature('callouts')"><div class="slider"></div></div></div>
+                <div class="feature-card"><span>🎤 Voice TTS</span><div class="toggle-switch" id="toggle-voice" onclick="toggleFeature('voice')"><div class="slider"></div></div></div>
+                <div class="feature-card"><span>🎲 Discord Bridge</span><div class="toggle-switch" id="toggle-discord" onclick="toggleFeature('discord')"><div class="slider"></div></div></div>
+                <div class="feature-card"><span>📢 Announcements</span><div class="toggle-switch" id="toggle-announce" onclick="toggleFeature('announce')"><div class="slider"></div></div></div>
+                <div class="feature-card"><span>⚖️ Load Balancing</span><div class="toggle-switch" id="toggle-loadbalance" onclick="toggleFeature('loadbalance')"><div class="slider"></div></div></div>
+                <div class="feature-card"><span>💾 Memory</span><div class="toggle-switch" id="toggle-memory" onclick="toggleFeature('memory')"><div class="slider"></div></div></div>
+            </div>
+            <!-- No Map Rotation / Map Voting / Server Visibility toggles
+                 here — no Reclaimer RCON commands back them. Map, mode,
+                 teams and votes live on the Game Control tab. -->
+        </div>
+
+        <!-- Players Tab -->
+        <div id="tab-players" class="tab-content">
+            <div class="command-input">
+                <input type="text" id="broadcastMsg" placeholder="Broadcast message to all players...">
+                <button onclick="broadcastMessage()">Broadcast</button>
+            </div>
+            <div class="table-container">
+                <table id="playersTable">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Team</th>
+                            <th>Score</th>
+                            <th>Kills</th>
+                            <th>Deaths</th>
+                            <th>Assists</th>
+                            <th>Tag</th>
+                            <th>Health / Shields</th>
+                            <th title="Time since the player last died, as reported by the server">Last Died</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="playersTableBody">
+                        <tr><td colspan="11" class="loading">Loading players...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <h2>💀 Kill Feed</h2>
+            <div class="table-container kill-feed">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Killer</th>
+                            <th></th>
+                            <th>Victim</th>
+                            <th title="Raw code the server attaches to each kill; its meaning isn't confirmed">Report</th>
+                        </tr>
+                    </thead>
+                    <tbody id="killFeedBody">
+                        <tr><td colspan="5" class="loading">No kills yet — they appear here as the server reports them.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Game Control Tab -->
+        <div id="tab-game" class="tab-content">
+            <div class="stats-grid">
+                <div class="stat-card"><h3>Map</h3><div class="value small" id="gcMap">--</div></div>
+                <div class="stat-card"><h3>Mode</h3><div class="value small" id="gcMode">--</div></div>
+                <div class="stat-card"><h3>Next Game</h3><div class="value small" id="gcNext">--</div></div>
+                <div class="stat-card" id="gcVoteCard"><h3>Active Vote</h3><div class="value small" id="gcVote">--</div></div>
+            </div>
+            <div class="result-line" id="gameResult"></div>
+
+            <div class="section">
+                <h2>🗺️ Map &amp; Mode</h2>
+                <p class="hint"><strong>Set Map</strong>, <strong>Set Mode</strong> and <strong>Load</strong> end the current game and start the new one in the next lobby.
+                    <strong>Set Next Map</strong> queues one without ending this game. Click a name below to fill the box, or type your own.</p>
+
+                <label class="field-label" for="mapInput">Map</label>
+                <div class="command-input">
+                    <input type="text" id="mapInput" list="mapList" placeholder="Map name">
+                    <button class="btn btn-danger" onclick="gameMap('map')">Set Map</button>
+                    <button class="btn btn-info" onclick="gameMap('nextmap')">Set Next Map</button>
+                </div>
+                <div class="chip-box" id="mapChips"><span class="small-text">Loading maps...</span></div>
+
+                <label class="field-label" for="modeInput">Mode</label>
+                <div class="command-input">
+                    <input type="text" id="modeInput" list="modeList" placeholder="Mode name">
+                    <button class="btn btn-danger" onclick="gameMode()">Set Mode</button>
+                </div>
+                <div class="chip-box" id="modeChips"><span class="small-text">Loading modes...</span></div>
+
+                <label class="field-label" for="loadInput">Load (arguments exactly as the server expects them)</label>
+                <div class="command-input">
+                    <input type="text" id="loadInput" placeholder="e.g. a map and mode, or a saved game">
+                    <button class="btn btn-danger" onclick="gameLoad()">Load</button>
+                </div>
+
+                <div class="btn-row">
+                    <button class="btn btn-secondary" onclick="loadLists(true)">Refresh map &amp; mode lists</button>
+                    <span class="small-text" id="listStatus"></span>
+                </div>
+                <datalist id="mapList"></datalist>
+                <datalist id="modeList"></datalist>
+            </div>
+
+            <div class="two-col">
+                <div class="section">
+                    <h2>👥 Teams</h2>
+                    <p class="hint">Spreads everyone over the chosen number of teams. Shuffle re-deals the current players.</p>
+                    <div class="command-input">
+                        <input type="number" id="teamCount" min="1" max="8" value="2">
+                        <button class="btn btn-primary" onclick="setTeamCount()">Set Team Count</button>
+                        <button class="btn btn-warn" onclick="shuffleTeams()">Shuffle Teams</button>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h2>🗳️ Votes</h2>
+                    <p class="hint">Starts a vote for the players in the lobby. Pass or cancel the running vote at any time.</p>
+                    <div class="btn-row">
+                        <button class="btn btn-vote" onclick="startVote('endround')">End Round</button>
+                        <button class="btn btn-vote" onclick="startVote('endgame')">End Game</button>
+                        <button class="btn btn-vote" onclick="startVote('shuffle')">Shuffle Teams</button>
+                        <button class="btn btn-vote" onclick="startVote('playlist')">Playlist Ballot</button>
+                    </div>
+                    <label class="field-label" for="voteKickPlayer">Vote to kick</label>
+                    <div class="command-input">
+                        <select id="voteKickPlayer"><option value="">No players online</option></select>
+                        <button class="btn btn-kick" onclick="voteKickSelected()">Start Kick Vote</button>
+                    </div>
+                    <div class="btn-row">
+                        <button class="btn btn-success" onclick="passVote()">Pass Vote</button>
+                        <button class="btn btn-danger" onclick="cancelVote()">Cancel Vote</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Moderation Tab -->
+        <div id="tab-moderation" class="tab-content">
+            <div class="section">
+                <h2>👥 Player Management</h2>
+                <div class="feature-grid">
+                    <div class="feature-card"><span>AutoMod</span><div class="toggle-switch" id="toggle-automod2" onclick="toggleFeature('automod')"><div class="slider"></div></div></div>
+                </div>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Moderator Name</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="modListBody">
+                            <tr><td colspan="2" class="loading">Loading moderators...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="command-input">
+                    <input type="text" id="modName" placeholder="Player name to add/remove as mod">
+                    <button onclick="addMod()" class="btn btn-success">Add Moderator</button>
+                    <button onclick="removeMod()" class="btn btn-danger">Remove Moderator</button>
+                </div>
+                <hr>
+                <h2>⚠️ Warning Management</h2>
+                <div class="command-input">
+                    <input type="text" id="warnPlayer" placeholder="Player name">
+                    <input type="text" id="warnReason" placeholder="Reason">
+                    <button onclick="warnPlayer()" class="btn btn-warn">Warn</button>
+                </div>
+                <div class="command-input">
+                    <input type="text" id="clearWarnPlayer" placeholder="Player name">
+                    <button onclick="clearWarnings()" class="btn btn-info">Clear Warnings</button>
+                </div>
+                <hr>
+                <h2>🚫 Ban Management</h2>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>UID</th>
+                                <th>IP</th>
+                                <th>Reason</th>
+                                <th>Banned At</th>
+                                <th>Expires</th>
+                                <th>Mod</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="banListBody">
+                            <tr><td colspan="8" class="loading">Loading bans...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Settings Tab -->
+        <div id="tab-settings" class="tab-content">
+            <div class="section">
+                <h2>🏷️ Server Name &amp; Password</h2>
+                <p class="hint">Both last until the server restarts. The password is sent straight to the server and never written to the bot's log or chat.</p>
+                <label class="field-label" for="serverNameInput">Server name</label>
+                <div class="command-input">
+                    <input type="text" id="serverNameInput" placeholder="New server name">
+                    <button class="btn btn-primary" onclick="setServerName()">Rename Server</button>
+                </div>
+                <label class="field-label" for="serverPasswordInput">Join password</label>
+                <div class="command-input">
+                    <input type="password" id="serverPasswordInput" placeholder="New join password" autocomplete="new-password">
+                    <button class="btn btn-primary" onclick="setServerPassword()">Set Password</button>
+                    <button class="btn btn-danger" onclick="clearServerPassword()">Clear Password</button>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>🎲 AI Settings</h2>
+                <div class="command-input">
+                    <select id="aiProvider">
+                        <option value="auto">Auto</option>
+                        <option value="groq">Groq</option>
+                        <option value="cerebras">Cerebras</option>
+                        <option value="mistral">Mistral</option>
+                        <option value="openrouter">OpenRouter</option>
+                    </select>
+                    <button onclick="setAIProvider()">Set AI Provider</button>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>💾 Backup & Maintenance</h2>
+                <div class="command-input">
+                    <button onclick="createBackup()" class="btn btn-primary">Create Backup</button>
+                    <button onclick="listBackups()" class="btn btn-info">List Backups</button>
+                    <button onclick="quickCommand('!ai reload')" class="btn btn-warning">Reload Config</button>
+                </div>
+                <div id="backupList" style="margin-top: 10px; color: #aaa;"></div>
+            </div>
+
+            <div class="section">
+                <h2>🧠 Memory Management</h2>
+                <div class="command-input">
+                    <button onclick="quickCommand('!ai forget')" class="btn btn-danger">Clear All Memory</button>
+                    <input type="text" id="rememberText" placeholder="Remember something...">
+                    <button onclick="remember()">Save to Memory</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Commands Tab -->
+        <div id="tab-commands" class="tab-content">
+            <div class="section">
+                <h2>⌨️ Custom Command</h2>
+                <div class="command-input">
+                    <input type="text" id="commandInput" placeholder="e.g., !ai status">
+                    <button onclick="sendCommand()">Send to Bot</button>
+                </div>
+                <div id="commandResult" style="margin-top: 10px; color: #00d4ff;"></div>
+            </div>
+
+            <div class="section">
+                <h2>📋 Quick Commands</h2>
+                <h3>Bot</h3>
+                <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                    <button class="btn btn-primary" onclick="quickCommand('!ai status')">!ai status</button>
+                    <button class="btn btn-primary" onclick="quickCommand('!ai gamestatus')">!ai gamestatus</button>
+                    <button class="btn btn-primary" onclick="quickCommand('!ai modlist')">!ai modlist</button>
+                    <button class="btn btn-primary" onclick="quickCommand('!ai banlist')">!ai banlist</button>
+                    <button class="btn btn-primary" onclick="quickCommand('!ai reload')">Reload Config</button>
+                    <button class="btn btn-primary" onclick="quickCommand('!ai backup')">Backup</button>
+                    <button class="btn btn-primary" onclick="quickCommand('!ai forget')">Forget Memory</button>
+                </div>
+                <h3>Game control (result shows here, not in game chat)</h3>
+                <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                    <button class="btn btn-info" onclick="callGame('maps')">maps</button>
+                    <button class="btn btn-info" onclick="callGame('modes')">modes</button>
+                    <button class="btn btn-warn" onclick="shuffleTeams()">shuffle</button>
+                    <button class="btn btn-vote" onclick="startVote('endround')">startvote endround</button>
+                    <button class="btn btn-vote" onclick="startVote('endgame')">startvote endgame</button>
+                    <button class="btn btn-vote" onclick="startVote('shuffle')">startvote shuffle</button>
+                    <button class="btn btn-vote" onclick="startVote('playlist')">startvote playlist</button>
+                    <button class="btn btn-success" onclick="passVote()">passvote</button>
+                    <button class="btn btn-danger" onclick="cancelVote()">cancelvote</button>
+                </div>
+                <div class="result-line" id="quickGameResult"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <!-- Tempban Modal -->
+    <div id="tempbanModal" class="modal">
+        <div class="modal-content">
+            <h3>⏱️ Tempban Player</h3>
+            <p id="tempbanPlayerName"></p>
+            <input type="number" id="tempbanDuration" placeholder="Duration (minutes)" value="5">
+            <button onclick="confirmTempban()" class="btn btn-primary">Confirm</button>
+            <button onclick="closeModal()" class="btn">Cancel</button>
+        </div>
+    </div>
+
+    <!-- Warn Modal -->
+    <div id="warnModal" class="modal">
+        <div class="modal-content">
+            <h3>⚠️ Warn Player</h3>
+            <p id="warnPlayerName"></p>
+            <input type="text" id="warnReasonInput" placeholder="Reason for warning">
+            <button onclick="confirmWarn()" class="btn btn-primary">Confirm</button>
+            <button onclick="closeWarnModal()" class="btn">Cancel</button>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:5000';
+
+        // ───────────── Owner key ─────────────
+        // The key is NOT stored in this file. It is the OWNER_PRIVKEY from the
+        // bot's config.txt. The first action that needs it asks for it, and it
+        // is remembered in this browser only (localStorage).
+        const KEY_STORAGE = 'cortanaDashboardKey';
+        let memoryKey = '';   // fallback if the browser blocks localStorage
+
+        function getApiKey() {
+            try { return localStorage.getItem(KEY_STORAGE) || memoryKey; }
+            catch (e) { return memoryKey; }
+        }
+
+        function saveApiKey(key) {
+            memoryKey = key;
+            try {
+                if (key) localStorage.setItem(KEY_STORAGE, key);
+                else localStorage.removeItem(KEY_STORAGE);
+            } catch (e) { /* keep the in-memory copy */ }
+            updateKeyState();
+        }
+
+        function askForKey(message) {
+            const entered = prompt(message || 'Enter your dashboard key (OWNER_PRIVKEY from the bot\'s config.txt):', '');
+            if (entered && entered.trim()) saveApiKey(entered.trim());
+            return getApiKey();
+        }
+
+        function authHeader() {
+            const key = getApiKey() || askForKey();
+            return `Bearer ${key}`;
+        }
+
+        function changeKey() {
+            const entered = prompt('Enter the dashboard key (OWNER_PRIVKEY from the bot\'s config.txt). Leave empty to forget the saved key:', '');
+            if (entered === null) return;   // cancelled: change nothing
+            saveApiKey(entered.trim());
+            toast(getApiKey() ? 'Dashboard key saved in this browser.' : 'Dashboard key forgotten.');
+        }
+
+        function updateKeyState() {
+            const el = document.getElementById('keyState');
+            if (el) el.textContent = getApiKey() ? 'Key saved in this browser' : 'No key set — you will be asked when you first use a control';
+        }
+
+        // A 401 means the key is wrong: forget it so the next action asks again.
+        const nativeFetch = window.fetch.bind(window);
+        window.fetch = async (...args) => {
+            const res = await nativeFetch(...args);
+            if (res.status === 401 && String(args[0]).startsWith(API_URL)) {
+                saveApiKey('');
+                toast('Unauthorized: the dashboard key was rejected. You will be asked for it again.', false);
+            }
+            return res;
+        };
+
+        // What each vote button sends after "startvote". The server's exact
+        // vote names aren't documented — if a button is rejected, change its
+        // value here (the server's reply is shown in the result line).
+        const VOTE_ARGS = {
+            endround: 'endround',
+            endgame:  'endgame',
+            shuffle:  'shuffle',
+            playlist: 'playlist'
+        };
+        const VOTE_LABELS = {
+            endround: 'End round', endgame: 'End game',
+            shuffle: 'Shuffle teams', playlist: 'Playlist ballot'
+        };
+        let currentTempbanPlayer = '';
+        let currentWarnPlayer = '';
+
+        function showTab(tabName) {
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.tab === tabName);
+            });
+
+            document.getElementById(`tab-${tabName}`).classList.add('active');
+
+            if (tabName === 'players') {
+                fetchPlayers();
+                fetchKills();
+            }
+            if (tabName === 'game') {
+                fetchStatus();
+                fetchPlayers();
+                if (!listsLoaded) loadLists();
+            }
+            if (tabName === 'moderation') {
+                fetchModList();
+                fetchBans();
+            }
+        }
+
+        function updateToggle(feature, enabled) {
+            const toggles = document.querySelectorAll(`[id^="toggle-${feature}"]`);
+            toggles.forEach(toggle => {
+                if (toggle) {
+                    if (enabled) {
+                        toggle.classList.add('active');
+                    } else {
+                        toggle.classList.remove('active');
+                    }
+                }
+            });
+        }
+
+        async function toggleFeature(feature) {
+            const toggle = document.getElementById(`toggle-${feature}`);
+            if (!toggle) return;
+            const newState = !toggle.classList.contains('active');
+
+            try {
+                const response = await fetch(`${API_URL}/api/feature`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': authHeader()
+                    },
+                    body: JSON.stringify({ feature: feature, enabled: newState })
+                });
+
+                if (response.ok) {
+                    if (newState) {
+                        toggle.classList.add('active');
+                    } else {
+                        toggle.classList.remove('active');
+                    }
+                    // Update duplicate toggles
+                    const dupToggles = document.querySelectorAll(`[id^="toggle-${feature}"]`);
+                    dupToggles.forEach(t => {
+                        if (newState) {
+                            t.classList.add('active');
+                        } else {
+                            t.classList.remove('active');
+                        }
+                    });
+                }
+            } catch (error) {
+                console.error('Error toggling feature:', error);
+            }
+        }
+
+        async function fetchStatus() {
+            try {
+                const response = await fetch(`${API_URL}/api/status`);
+                const data = await response.json();
+
+                document.getElementById('botStatus').innerHTML = data.bot_enabled ?
+                    '<span class="online">● ONLINE</span>' : '<span class="offline">● OFFLINE</span>';
+                document.getElementById('playerCount').innerHTML = data.players_online;
+                document.getElementById('currentMap').innerHTML = data.current_map;
+                document.getElementById('gameStatus').innerHTML = data.game_status;
+                document.getElementById('activeProvider').innerHTML = data.active_provider || 'N/A';
+                document.getElementById('modCount').innerHTML = data.mod_count || '0';
+
+                setStat('rconStatus', data.rcon_connected ? '● Connected' : '● Disconnected', data.rcon_connected ? 'online' : 'offline');
+                setStat('serverName', data.server_name || '--');
+                setStat('currentMode', data.mode || '--');
+                setStat('nextGame', fmtVal(data.next_game));
+                setStat('activeVote', fmtVal(data.vote));
+                setStat('passwordState', data.password_required === null || data.password_required === undefined
+                    ? '--' : (data.password_required ? 'Set' : 'None'));
+                const voteOn = isSet(data.vote) || isSet(data.playlist_vote);
+                document.getElementById('voteCard').classList.toggle('vote-active', voteOn);
+
+                // Game Control tab mirrors
+                setStat('gcMap', data.current_map || '--');
+                setStat('gcMode', data.mode || '--');
+                setStat('gcNext', fmtVal(data.next_game));
+                let voteText = fmtVal(data.vote);
+                if (isSet(data.playlist_vote)) {
+                    voteText = (isSet(data.vote) ? voteText + ' + ' : '') + 'Playlist ballot: ' + fmtVal(data.playlist_vote);
+                }
+                setStat('gcVote', voteText);
+                document.getElementById('gcVoteCard').classList.toggle('vote-active', voteOn);
+
+                const nameBox = document.getElementById('serverNameInput');
+                if (nameBox && data.server_name && document.activeElement !== nameBox) {
+                    nameBox.placeholder = data.server_name;
+                }
+
+                updateToggle('automod', data.automod_enabled);
+                updateToggle('callouts', data.callouts_enabled);
+                updateToggle('afk', data.afk_enabled);
+                updateToggle('voice', data.voice_enabled);
+                updateToggle('discord', data.discord_enabled);
+                updateToggle('announce', data.announce_enabled);
+                updateToggle('loadbalance', data.load_balancing_enabled);
+                updateToggle('memory', data.memory_enabled);
+            } catch (error) {
+                console.error('Error fetching status:', error);
+                document.getElementById('botStatus').innerHTML = '<span class="offline">● CONNECTION ERROR</span>';
+            }
+        }
+
+        let lastPlayers = [];
+
+        async function fetchPlayers() {
+            try {
+                const response = await fetch(`${API_URL}/api/players`);
+                const players = await response.json();
+                const tbody = document.getElementById('playersTableBody');
+                lastPlayers = players || [];
+                fillVoteKickSelect();
+
+                if (!players || players.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="11" class="loading">No players online</td></tr>';
+                    return;
+                }
+
+                let html = '';
+                for (const p of players) {
+                    const statusBits = [];
+                    if (p.admin) statusBits.push('Admin');
+                    if (p.muted) statusBits.push('Muted');
+                    const n = escapeAttr(p.name);
+                    html += `<tr>
+                        <td>${escapeHtml(p.name)}</td>
+                        <td>${escapeHtml(p.team === null || p.team === undefined ? '-' : String(p.team))}</td>
+                        <td>${p.score}</td>
+                        <td>${p.kills}</td>
+                        <td>${p.deaths}</td>
+                        <td>${p.assists || 0}</td>
+                        <td>${escapeHtml(p.service_tag || '-')}</td>
+                        <td>${vitalsHtml(p)}</td>
+                        <td title="raw value: ${escapeAttr(p.since_death === null || p.since_death === undefined ? 'n/a' : String(p.since_death))}">${fmtAgo(p.since_death)}</td>
+                        <td>${statusBits.join(', ') || '-'}</td>
+                        <td class="action-buttons">
+                            <button class="btn btn-kick" data-name="${n}" onclick="kickPlayer(this.dataset.name)">Kick</button>
+                            <button class="btn btn-ban" data-name="${n}" onclick="banPlayer(this.dataset.name)">Ban</button>
+                            <button class="btn btn-tempban" data-name="${n}" onclick="showTempbanModal(this.dataset.name)">Tempban</button>
+                            <button class="btn btn-mute" data-name="${n}" onclick="mutePlayer(this.dataset.name)">Mute</button>
+                            <button class="btn btn-unmute" data-name="${n}" onclick="unmutePlayer(this.dataset.name)">Unmute</button>
+                            <button class="btn btn-warn" data-name="${n}" onclick="showWarnModal(this.dataset.name)">Warn</button>
+                            <button class="btn btn-vote" data-name="${n}" onclick="voteKick(this.dataset.name)">Vote Kick</button>
+                            <button class="btn btn-info" data-name="${n}" onclick="tellPlayer(this.dataset.name)">Tell</button>
+                        </td>
+                    </tr>`;
+                }
+                tbody.innerHTML = html;
+            } catch (error) {
+                console.error('Error fetching players:', error);
+                document.getElementById('playersTableBody').innerHTML = '<tr><td colspan="11" class="loading">Error loading players</td></tr>';
+            }
+        }
+
+        async function fetchModList() {
+            try {
+                const response = await fetch(`${API_URL}/api/mods`);
+                const mods = await response.json();
+                const tbody = document.getElementById('modListBody');
+
+                if (!mods || mods.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="2" class="loading">No moderators assigned</td></tr>';
+                    return;
+                }
+
+                let html = '';
+                for (const m of mods) {
+                    html += `<tr>
+                        <td>${escapeHtml(m.name)}</td>
+                        <td class="action-buttons">
+                            <button class="btn btn-danger" data-name="${escapeAttr(m.name)}" onclick="removeModByName(this.dataset.name)">Remove</button>
+                        </td>
+                    </tr>`;
+                }
+                tbody.innerHTML = html;
+            } catch (error) {
+                console.error('Error fetching mods:', error);
+                document.getElementById('modListBody').innerHTML = '<tr><td colspan="2" class="loading">Error loading moderators</td></tr>';
+            }
+        }
+
+        async function fetchBans() {
+            try {
+                const response = await fetch(`${API_URL}/api/bans`);
+                const bans = await response.json();
+                const tbody = document.getElementById('banListBody');
+
+                if (!bans || bans.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="8" class="loading">No active bans</td></tr>';
+                    return;
+                }
+
+                let html = '';
+                for (const b of bans) {
+                    const expires = b.permanent ? 'Permanent' : (b.expires_at || '-');
+                    html += `<tr>
+                        <td>${escapeHtml(b.name)}</td>
+                        <td>${escapeHtml(b.uid || '-')}</td>
+                        <td>${escapeHtml(b.ip || '-')}</td>
+                        <td>${escapeHtml(b.reason || '-')}</td>
+                        <td>${escapeHtml(b.banned_at || '-')}</td>
+                        <td>${escapeHtml(expires)}</td>
+                        <td>${escapeHtml(b.moderator || '-')}</td>
+                        <td class="action-buttons">
+                            <button class="btn btn-success" data-uid="${escapeAttr(b.uid || '')}" data-ip="${escapeAttr(b.ip || '')}" data-name="${escapeAttr(b.name)}" onclick="unbanPlayer(this.dataset.uid, this.dataset.ip, this.dataset.name)">Unban</button>
+                        </td>
+                    </tr>`;
+                }
+                tbody.innerHTML = html;
+            } catch (error) {
+                console.error('Error fetching bans:', error);
+                document.getElementById('banListBody').innerHTML = '<tr><td colspan="8" class="loading">Error loading bans</td></tr>';
+            }
+        }
+
+        async function unbanPlayer(uid, ip, name) {
+            // Reclaimer's "unban" RCON command takes a player ID or IP --
+            // not a name -- so send whichever identifier the ban record
+            // actually has (uid preferred, then ip). Name is passed along
+            // only for the confirm dialog and as a last-resort fallback.
+            if (!confirm(`Unban ${name}?`)) return;
+            try {
+                await fetch(`${API_URL}/api/unban`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': authHeader()
+                    },
+                    body: JSON.stringify({ uid: uid, ip: ip, name: name })
+                });
+                setTimeout(() => fetchBans(), 500);
+            } catch (error) {
+                console.error('Error unbanning player:', error);
+            }
+        }
+
+        async function kickPlayer(name) {
+            if (confirm(`Kick ${name}?`)) {
+                await fetch(`${API_URL}/api/kick`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': authHeader()
+                    },
+                    body: JSON.stringify({ name: name })
+                });
+                setTimeout(() => fetchPlayers(), 1000);
+            }
+        }
+
+        async function banPlayer(name) {
+            if (confirm(`Permanently ban ${name}?`)) {
+                await fetch(`${API_URL}/api/ban`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': authHeader()
+                    },
+                    body: JSON.stringify({ name: name })
+                });
+                setTimeout(() => fetchPlayers(), 1000);
+                setTimeout(() => fetchBans(), 1000);
+            }
+        }
+
+        function showTempbanModal(name) {
+            currentTempbanPlayer = name;
+            document.getElementById('tempbanPlayerName').innerText = name;
+            document.getElementById('tempbanModal').style.display = 'flex';
+        }
+
+        async function confirmTempban() {
+            const duration = document.getElementById('tempbanDuration').value;
+            await fetch(`${API_URL}/api/tempban`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': authHeader()
+                },
+                body: JSON.stringify({ name: currentTempbanPlayer, duration: parseInt(duration) })
+            });
+            closeModal();
+            setTimeout(() => fetchPlayers(), 1000);
+            setTimeout(() => fetchBans(), 1000);
+        }
+
+        function showWarnModal(name) {
+            currentWarnPlayer = name;
+            document.getElementById('warnPlayerName').innerText = name;
+            document.getElementById('warnReasonInput').value = '';
+            document.getElementById('warnModal').style.display = 'flex';
+        }
+
+        async function confirmWarn() {
+            const reason = document.getElementById('warnReasonInput').value;
+            if (!reason) {
+                alert('Please enter a reason for the warning');
+                return;
+            }
+            await quickCommand(`!ai warn ${currentWarnPlayer} "${reason}"`);
+            closeWarnModal();
+            setTimeout(() => fetchPlayers(), 1000);
+        }
+
+        async function mutePlayer(name) {
+            await fetch(`${API_URL}/api/mute`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': authHeader()
+                },
+                body: JSON.stringify({ name: name })
+            });
+        }
+
+        async function unmutePlayer(name) {
+            await fetch(`${API_URL}/api/unmute`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': authHeader()
+                },
+                body: JSON.stringify({ name: name })
+            });
+        }
+
+        async function addMod() {
+            const name = document.getElementById('modName').value;
+            if (!name) return;
+            await quickCommand(`!ai addmod ${name}`);
+            document.getElementById('modName').value = '';
+            setTimeout(() => fetchModList(), 1000);
+        }
+
+        async function removeMod() {
+            const name = document.getElementById('modName').value;
+            if (!name) return;
+            await quickCommand(`!ai removemod ${name}`);
+            document.getElementById('modName').value = '';
+            setTimeout(() => fetchModList(), 1000);
+        }
+
+        async function removeModByName(name) {
+            await quickCommand(`!ai removemod ${name}`);
+            setTimeout(() => fetchModList(), 1000);
+        }
+
+        async function warnPlayer() {
+            const name = document.getElementById('warnPlayer').value;
+            const reason = document.getElementById('warnReason').value;
+            if (!name || !reason) {
+                alert('Enter both player name and reason');
+                return;
+            }
+            await quickCommand(`!ai warn ${name} "${reason}"`);
+            document.getElementById('warnPlayer').value = '';
+            document.getElementById('warnReason').value = '';
+            setTimeout(() => fetchPlayers(), 1000);
+        }
+
+        async function clearWarnings() {
+            const name = document.getElementById('clearWarnPlayer').value;
+            if (!name) return;
+            await quickCommand(`!ai clearwarnings ${name}`);
+            document.getElementById('clearWarnPlayer').value = '';
+            setTimeout(() => fetchPlayers(), 1000);
+        }
+
+        function closeModal() {
+            document.getElementById('tempbanModal').style.display = 'none';
+        }
+
+        function closeWarnModal() {
+            document.getElementById('warnModal').style.display = 'none';
+        }
+
+        async function broadcastMessage() {
+            const msg = document.getElementById('broadcastMsg').value;
+            if (!msg) return;
+            await fetch(`${API_URL}/api/say`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': authHeader()
+                },
+                body: JSON.stringify({ message: msg })
+            });
+            document.getElementById('broadcastMsg').value = '';
+        }
+
+        // loadMap/loadMode/setServerName/setServerPassword/clearServerPassword/
+        // setTeams removed -- no backing UI elements or RCON commands on
+        // Reclaimer (server identity/team count live in dedicated.toml).
+
+        async function setAIProvider() {
+            const provider = document.getElementById('aiProvider').value;
+            await quickCommand(`!ai provider ${provider}`);
+        }
+
+        async function createBackup() {
+            await quickCommand(`!ai backup`);
+        }
+
+        async function listBackups() {
+            await quickCommand(`!ai backuplist`);
+            const backupDiv = document.getElementById('backupList');
+            backupDiv.innerHTML = '<div class="loading">Check game chat for backup list</div>';
+            setTimeout(() => {
+                backupDiv.innerHTML = '';
+            }, 5000);
+        }
+
+        async function remember() {
+            const text = document.getElementById('rememberText').value;
+            if (!text) return;
+            await quickCommand(`!ai remember ${text}`);
+            document.getElementById('rememberText').value = '';
+        }
+
+        async function sendCommand() {
+            const input = document.getElementById('commandInput');
+            const command = input.value.trim();
+            if (!command) return;
+
+            const resultDiv = document.getElementById('commandResult');
+            resultDiv.innerHTML = 'Sending...';
+
+            try {
+                await fetch(`${API_URL}/api/command`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': authHeader()
+                    },
+                    body: JSON.stringify({ command: command })
+                });
+
+                resultDiv.innerHTML = `✓ Command sent: ${command}`;
+                input.value = '';
+
+                setTimeout(() => {
+                    resultDiv.innerHTML = '';
+                }, 3000);
+            } catch (error) {
+                resultDiv.innerHTML = '✗ Error sending command';
+            }
+        }
+
+        async function quickCommand(command) {
+            const resultDiv = document.getElementById('commandResult');
+            resultDiv.innerHTML = `Sending: ${command}`;
+
+            try {
+                await fetch(`${API_URL}/api/command`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': authHeader()
+                    },
+                    body: JSON.stringify({ command: command })
+                });
+                resultDiv.innerHTML = `✓ Command sent: ${command}`;
+                setTimeout(() => {
+                    resultDiv.innerHTML = '';
+                }, 2000);
+            } catch (error) {
+                resultDiv.innerHTML = '✗ Error';
+            }
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // For values placed inside an HTML attribute (escapeHtml leaves quotes alone).
+        function escapeAttr(text) {
+            if (text === null || text === undefined) return '';
+            return String(text)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+
+        // ───────────── Shared helpers ─────────────
+        function setStat(id, text, cls) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.textContent = text;
+            el.classList.remove('online', 'offline');
+            if (cls) el.classList.add(cls);
+        }
+
+        function isSet(v) {
+            return v !== null && v !== undefined && v !== false && v !== '';
+        }
+
+        // The server's next/vote fields are null when idle; anything else is
+        // shown as best as we can make out (its exact shape isn't documented).
+        function fmtVal(v) {
+            if (!isSet(v)) return 'None';
+            if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') return String(v);
+            if (Array.isArray(v)) return v.map(fmtVal).join(', ') || 'None';
+            if (typeof v === 'object') {
+                if (v.name) return String(v.name);
+                const parts = Object.values(v).filter(x => isSet(x) && typeof x !== 'object').map(String);
+                if (parts.length) return parts.join(', ');
+                try { return JSON.stringify(v); } catch (e) { return String(v); }
+            }
+            return String(v);
+        }
+
+        // Assumes seconds (the server only says "how long ago"); the raw
+        // value is also in the cell's tooltip so a wrong guess is easy to spot.
+        function fmtAgo(raw) {
+            if (raw === null || raw === undefined || raw === '') return '-';
+            const n = Number(raw);
+            if (!isFinite(n)) return String(raw);
+            if (n < 60) return `${Math.round(n)}s ago`;
+            const m = Math.floor(n / 60);
+            return `${m}m ${Math.round(n % 60)}s ago`;
+        }
+
+        // Health/shields come as plain numbers. Values up to 1 are treated as
+        // fractions, anything else as a 0-100 scale, only to size the bars.
+        function barPct(v) {
+            const n = Number(v);
+            if (!isFinite(n)) return 0;
+            return Math.max(0, Math.min(100, n <= 1 ? n * 100 : n));
+        }
+
+        function vitalsHtml(p) {
+            if (p.alive === false) return '<span class="pill pill-dead">Dead</span>';
+            if (p.health === null || p.health === undefined) {
+                return p.alive === true ? '<span class="pill pill-alive">Alive</span>' : '-';
+            }
+            const sh = (p.shields === null || p.shields === undefined) ? '' :
+                `<div class="bar"><div class="sh" style="width:${barPct(p.shields)}%"></div></div>`;
+            return `<div class="vitals">
+                <div class="nums">❤ ${escapeHtml(String(p.health))}${p.shields === null || p.shields === undefined ? '' : ' &nbsp;🛡 ' + escapeHtml(String(p.shields))}</div>
+                <div class="bar"><div class="hp" style="width:${barPct(p.health)}%"></div></div>${sh}
+            </div>`;
+        }
+
+        let toastTimer = null;
+        function toast(message, ok = true) {
+            const el = document.getElementById('toast');
+            el.textContent = message;
+            el.classList.toggle('err', !ok);
+            el.classList.add('show');
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => el.classList.remove('show'), 4500);
+        }
+
+        function showGameResult(text, ok) {
+            for (const id of ['gameResult', 'quickGameResult']) {
+                const el = document.getElementById(id);
+                if (!el) continue;
+                el.textContent = text;
+                el.classList.toggle('err', !ok);
+            }
+        }
+
+        // ───────────── Game control (POST /api/game) ─────────────
+        // Runs the same code as the in-game !ai commands, as the owner, and
+        // returns what that command would have said in chat.
+        async function callGame(action, args = '') {
+            try {
+                const res = await fetch(`${API_URL}/api/game`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': authHeader()
+                    },
+                    body: JSON.stringify({ action: action, args: args })
+                });
+                if (res.status === 401) {
+                    showGameResult('Unauthorized: the dashboard key does not match the bot.', false);
+                    toast('Unauthorized: the dashboard key does not match the bot.', false);
+                    return null;
+                }
+                const data = await res.json();
+                const text = (data.messages && data.messages.length ? data.messages.join(' ') : '') || data.error || 'No response from the bot.';
+                const ok = res.ok && data.ok !== false;
+                showGameResult(text, ok);
+                toast(text, ok);
+                setTimeout(() => { fetchStatus(); fetchPlayers(); }, 1500);
+                return data;
+            } catch (error) {
+                console.error('Game action failed:', error);
+                const msg = `Could not reach the bot at ${API_URL}.`;
+                showGameResult(msg, false);
+                toast(msg, false);
+                return null;
+            }
+        }
+
+        // Names with spaces get quoted the way player names do for kick/mute.
+        function quoteName(name) {
+            name = name.trim();
+            return /\s/.test(name) && !/^".*"$/.test(name) ? `"${name}"` : name;
+        }
+
+        function requireValue(id, what) {
+            const value = document.getElementById(id).value.trim();
+            if (!value) {
+                toast(`Enter ${what} first.`, false);
+                return null;
+            }
+            return value;
+        }
+
+        async function gameMap(kind) {
+            const name = requireValue('mapInput', 'a map name');
+            if (!name) return;
+            if (kind === 'map' && !confirm(`Switch to ${name}? This ends the current game.`)) return;
+            await callGame(kind, quoteName(name));
+        }
+
+        async function gameMode() {
+            const name = requireValue('modeInput', 'a mode name');
+            if (!name) return;
+            if (!confirm(`Switch to ${name}? This ends the current game.`)) return;
+            await callGame('mode', quoteName(name));
+        }
+
+        async function gameLoad() {
+            const text = requireValue('loadInput', 'what to load');
+            if (!text) return;
+            if (!confirm(`Load "${text}"? This ends the current game.`)) return;
+            await callGame('load', text);
+        }
+
+        async function setTeamCount() {
+            const n = parseInt(document.getElementById('teamCount').value, 10);
+            if (!n || n < 1) {
+                toast('Enter a team count of 1 or more.', false);
+                return;
+            }
+            await callGame('teamcount', String(n));
+        }
+
+        async function shuffleTeams() {
+            if (!confirm('Shuffle the teams now?')) return;
+            await callGame('shuffle');
+        }
+
+        async function startVote(type) {
+            const args = VOTE_ARGS[type];
+            if (!args) return;
+            await callGame('startvote', args);
+        }
+
+        function fillVoteKickSelect() {
+            const select = document.getElementById('voteKickPlayer');
+            if (!select) return;
+            const previous = select.value;
+            select.innerHTML = '';
+            if (!lastPlayers.length) {
+                const opt = document.createElement('option');
+                opt.value = '';
+                opt.textContent = 'No players online';
+                select.appendChild(opt);
+                return;
+            }
+            for (const p of lastPlayers) {
+                const opt = document.createElement('option');
+                opt.value = p.name;
+                opt.textContent = p.name;
+                select.appendChild(opt);
+            }
+            if (previous && lastPlayers.some(p => p.name === previous)) select.value = previous;
+        }
+
+        // A kick vote still goes through the bot's protections (it refuses
+        // the server admin and other moderators), so the name is sent as-is.
+        async function voteKick(name) {
+            if (!name) return;
+            if (!confirm(`Start a vote to kick ${name}?`)) return;
+            await callGame('startvote', `kick ${name}`);
+        }
+
+        function voteKickSelected() {
+            voteKick(document.getElementById('voteKickPlayer').value);
+        }
+
+        async function passVote() {
+            if (!confirm('Pass the current vote now?')) return;
+            await callGame('passvote');
+        }
+
+        async function cancelVote() {
+            await callGame('cancelvote');
+        }
+
+        async function tellPlayer(name) {
+            const text = prompt(`Private message to ${name}:`);
+            if (!text) return;
+            await quickCommand(`!ai tell ${name} ${text}`);
+        }
+
+        // ───────────── Server name & password ─────────────
+        async function setServerName() {
+            const name = requireValue('serverNameInput', 'a server name');
+            if (!name) return;
+            const data = await callGame('servername', name);
+            if (data && data.ok) document.getElementById('serverNameInput').value = '';
+        }
+
+        async function setServerPassword() {
+            const box = document.getElementById('serverPasswordInput');
+            const value = box.value.trim();
+            if (!value) {
+                toast('Enter a password first, or use Clear Password.', false);
+                return;
+            }
+            const data = await callGame('password', value);
+            if (data && data.ok) box.value = '';
+        }
+
+        async function clearServerPassword() {
+            if (!confirm('Remove the join password? Anyone will be able to join.')) return;
+            await callGame('password', 'clear');
+        }
+
+        // ───────────── Map & mode lists ─────────────
+        let listsLoaded = false;
+
+        function fillList(kind, names) {
+            const list = document.getElementById(kind === 'map' ? 'mapList' : 'modeList');
+            const chips = document.getElementById(kind === 'map' ? 'mapChips' : 'modeChips');
+            const input = document.getElementById(kind === 'map' ? 'mapInput' : 'modeInput');
+            list.innerHTML = '';
+            chips.innerHTML = '';
+            if (!names.length) {
+                chips.innerHTML = `<span class="small-text">The server returned no ${kind}s.</span>`;
+                return;
+            }
+            for (const name of names) {
+                const opt = document.createElement('option');
+                opt.value = name;
+                list.appendChild(opt);
+
+                const chip = document.createElement('button');
+                chip.type = 'button';
+                chip.className = 'chip';
+                chip.textContent = name;
+                chip.addEventListener('click', () => { input.value = name; input.focus(); });
+                chips.appendChild(chip);
+            }
+        }
+
+        async function loadLists(announce = false) {
+            const status = document.getElementById('listStatus');
+            status.textContent = 'Loading...';
+            let maps = null, modes = null, problem = '';
+            for (const kind of ['map', 'mode']) {
+                try {
+                    const res = await fetch(`${API_URL}/api/${kind}s`);
+                    const data = await res.json();
+                    if (res.ok) {
+                        fillList(kind, data.names || []);
+                        if (kind === 'map') maps = data.names || []; else modes = data.names || [];
+                    } else {
+                        problem = data.error || `The server did not return its ${kind}s.`;
+                        document.getElementById(kind === 'map' ? 'mapChips' : 'modeChips').innerHTML =
+                            `<span class="small-text">Couldn't load ${kind}s — type a name instead.</span>`;
+                    }
+                } catch (error) {
+                    problem = `Could not reach the bot at ${API_URL}.`;
+                }
+            }
+            listsLoaded = maps !== null && modes !== null;
+            status.textContent = problem || `${maps.length} maps, ${modes.length} modes loaded.`;
+            if (announce) toast(status.textContent, !problem);
+        }
+
+        // ───────────── Kill feed ─────────────
+        async function fetchKills() {
+            try {
+                const response = await fetch(`${API_URL}/api/kills?limit=20`);
+                const kills = await response.json();
+                const tbody = document.getElementById('killFeedBody');
+                if (!kills || kills.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" class="loading">No kills yet — they appear here as the server reports them.</td></tr>';
+                    return;
+                }
+                let html = '';
+                for (const k of kills) {
+                    const when = k.time ? new Date(k.time * 1000).toLocaleTimeString() : '-';
+                    html += `<tr>
+                        <td>${escapeHtml(when)}</td>
+                        <td>${escapeHtml(k.killer)}</td>
+                        <td class="arrow">${k.suicide ? '<span class="suicide">self</span>' : '➜'}</td>
+                        <td>${escapeHtml(k.victim)}</td>
+                        <td>${k.report === null || k.report === undefined ? '-' : escapeHtml(String(k.report))}</td>
+                    </tr>`;
+                }
+                tbody.innerHTML = html;
+            } catch (error) {
+                console.error('Error fetching kills:', error);
+            }
+        }
+
+        // Initial load
+        updateKeyState();
+        fetchStatus();
+        fetchPlayers();
+        fetchModList();
+        fetchBans();
+        fetchKills();
+        loadLists();
+
+        // Refresh intervals
+        setInterval(() => {
+            fetchStatus();
+            fetchPlayers();
+            if (document.getElementById('tab-players').classList.contains('active')) fetchKills();
+        }, 5000);
+
+        window.onclick = function(event) {
+            const modal = document.getElementById('tempbanModal');
+            if (event.target === modal) {
+                closeModal();
+            }
+            const warnModal = document.getElementById('warnModal');
+            if (event.target === warnModal) {
+                closeWarnModal();
+            }
+        }
+    </script>
+</body>
+</html>
