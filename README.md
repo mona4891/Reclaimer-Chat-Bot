@@ -136,10 +136,11 @@ is running (the bot serves its API on `127.0.0.1:5000`).
 | Settings | AI provider, backups, memory, server name and join password. |
 | Commands | A free-text command box and quick buttons for the common commands. |
 
-**The dashboard needs your owner key.** It is sent as a bearer token on every
-action, and must match `OWNER_PRIVKEY` in `config.txt`. In the HTML file it
-lives in the `API_TOKEN` constant and in the headers of the older request
-functions. **Replace it with a placeholder before you publish the file.**
+**The dashboard asks for your owner key.** The key is `OWNER_PRIVKEY` from
+`config.txt`. It is not stored in the HTML file: the first time you use a
+control that needs it, the dashboard asks for it and remembers it in that
+browser only. Use the "Set dashboard key" button to change or forget it. If the
+bot rejects the key, the dashboard forgets it and asks again.
 
 The vote buttons send `endround`, `endgame`, `shuffle` and `playlist`. If the
 server expects different names, change the `VOTE_ARGS` block at the top of the
@@ -198,7 +199,7 @@ poll is skipped rather than treated as "everyone left".
 | "Not connected to the server right now" | The RCON link is down. The bot reconnects on its own; check `RCON_PASSWORD` and `RCON_PORT`. |
 | Every chat line appears twice in the log | You're running an old build with the duplicate-connection bug. Update. |
 | `'>' not supported between 'int' and 'NoneType'` | An old build that didn't handle `null` scores. Update. |
-| Dashboard shows "Unauthorized" | The key in the HTML doesn't match `OWNER_PRIVKEY`. |
+| Dashboard shows "Unauthorized" | The key you entered doesn't match `OWNER_PRIVKEY` in `config.txt`. Enter it again with the "Set dashboard key" button. |
 | Health, shields or tag columns show `-` | The server's key names differ from the ones the bot guesses. See "Live player data". |
 | A vote button is rejected | The server's vote name differs. Edit `VOTE_ARGS` in the dashboard and the usage text in `commands_game.py`. |
 
