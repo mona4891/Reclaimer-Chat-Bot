@@ -1,0 +1,16 @@
+# Secrets and per-server data -- never commit these
+config.txt
+memory.txt
+mods.json
+stats.json
+warnings.json
+match_history.json
+ban_log.txt
+warning_log.txt
+
+# Generated at runtime
+logs/
+backups/
+cortana_bot_backup_*.zip
+__pycache__/
+*.pyc
