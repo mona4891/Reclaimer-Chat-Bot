@@ -336,6 +336,15 @@
         .vitals .nums { font-size: 0.75rem; color: #ccc; }
         .kill-feed td.arrow { color: #888; text-align: center; width: 40px; }
         .kill-feed .suicide { color: #ffa500; }
+        .ev { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.72rem; font-weight: bold; background: rgba(255,255,255,0.12); }
+        .ev-kick, .ev-ban, .ev-mute, .ev-refused { background: #ff9f1a; color: #1a1a2e; }
+        .ev-cheat { background: #ff4444; color: #fff; }
+        .ev-vote { background: #7c5cff; color: #fff; }
+        .ev-join { background: #00ff88; color: #1a1a2e; }
+        .ev-control, .ev-phase { background: #00d4ff; color: #1a1a2e; }
+        .ev-failed { background: #ff4444; color: #fff; }
+        select { padding: 10px 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.2); background: rgba(255,255,255,0.1); color: #fff; font-size: 0.9rem; }
+        select option { background: #1e1e2e; color: #fff; }
         .key-bar { display: flex; align-items: center; justify-content: center; gap: 12px; margin: -18px 0 22px 0; flex-wrap: wrap; }
         .toast {
             position: fixed; right: 20px; bottom: 20px; max-width: 440px; z-index: 2000;
@@ -366,6 +375,7 @@
             <button class="tab-btn active" data-tab="server" onclick="showTab('server')">📊 Server Status</button>
             <button class="tab-btn" data-tab="players" onclick="showTab('players')">👥 Players</button>
             <button class="tab-btn" data-tab="game" onclick="showTab('game')">🎮 Game Control</button>
+            <button class="tab-btn" data-tab="activity" onclick="showTab('activity')">📡 Activity</button>
             <button class="tab-btn" data-tab="moderation" onclick="showTab('moderation')">🛡️ Moderation</button>
             <button class="tab-btn" data-tab="settings" onclick="showTab('settings')">⚙️ Settings</button>
             <button class="tab-btn" data-tab="commands" onclick="showTab('commands')">⌨️ Commands</button>
@@ -421,6 +431,18 @@
                 <div class="stat-card">
                     <h3>Join Password</h3>
                     <div class="value" id="passwordState">--</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Anti-Cheat</h3>
+                    <div class="value small" id="antiCheat">--</div>
+                </div>
+                <div class="stat-card">
+                    <h3>VPN Blocking</h3>
+                    <div class="value" id="vpnBlock">--</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Max Join Ping</h3>
+                    <div class="value" id="maxPing">--</div>
                 </div>
             </div>
 
@@ -488,6 +510,24 @@
             </div>
         </div>
 
+        <!-- Activity Tab -->
+        <div id="tab-activity" class="tab-content">
+            <div class="section">
+                <h2>📡 Server Activity</h2>
+                <p class="hint">Joins, leaves, kicks, bans, mutes, votes, game phase changes, anti-cheat flags and the result of queued game actions, as the server reports them. Kept in memory since the bot started.</p>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr><th>Time</th><th>Event</th><th>Details</th></tr>
+                        </thead>
+                        <tbody id="activityBody">
+                            <tr><td colspan="3" class="loading">Nothing yet — events appear here as they happen.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
         <!-- Game Control Tab -->
         <div id="tab-game" class="tab-content">
             <div class="stats-grid">
@@ -500,31 +540,28 @@
 
             <div class="section">
                 <h2>🗺️ Map &amp; Mode</h2>
-                <p class="hint"><strong>Set Map</strong>, <strong>Set Mode</strong> and <strong>Load</strong> end the current game and start the new one in the next lobby.
-                    <strong>Set Next Map</strong> queues one without ending this game. Click a name below to fill the box, or type your own.</p>
+                <p class="hint"><strong>Set Map</strong>, <strong>Set Mode</strong> and <strong>Load Map + Mode</strong> end the current game and start the new one in the next lobby.
+                    <strong>Set Next Game</strong> queues a game without ending this one; leave the mode empty to keep the current rules.
+                    Click a name to fill the box, or type your own. The server replies when a change is queued; if it can't be completed, the failure shows up under Activity.</p>
 
                 <label class="field-label" for="mapInput">Map</label>
                 <div class="command-input">
-                    <input type="text" id="mapInput" list="mapList" placeholder="Map name">
+                    <input type="text" id="mapInput" list="mapList" placeholder="Map">
                     <button class="btn btn-danger" onclick="gameMap('map')">Set Map</button>
-                    <button class="btn btn-info" onclick="gameMap('nextmap')">Set Next Map</button>
+                    <button class="btn btn-info" onclick="gameNext()">Set Next Game</button>
                 </div>
                 <div class="chip-box" id="mapChips"><span class="small-text">Loading maps...</span></div>
 
-                <label class="field-label" for="modeInput">Mode</label>
+                <label class="field-label" for="modeInput">Mode or saved game variant</label>
                 <div class="command-input">
-                    <input type="text" id="modeInput" list="modeList" placeholder="Mode name">
+                    <input type="text" id="modeInput" list="modeList" placeholder="Mode">
                     <button class="btn btn-danger" onclick="gameMode()">Set Mode</button>
                 </div>
                 <div class="chip-box" id="modeChips"><span class="small-text">Loading modes...</span></div>
 
-                <label class="field-label" for="loadInput">Load (arguments exactly as the server expects them)</label>
-                <div class="command-input">
-                    <input type="text" id="loadInput" placeholder="e.g. a map and mode, or a saved game">
-                    <button class="btn btn-danger" onclick="gameLoad()">Load</button>
-                </div>
-
                 <div class="btn-row">
+                    <button class="btn btn-danger" onclick="gameLoadBoth()">Load Map + Mode</button>
+                    <button class="btn btn-secondary" onclick="showNext()">Show Next Game</button>
                     <button class="btn btn-secondary" onclick="loadLists(true)">Refresh map &amp; mode lists</button>
                     <span class="small-text" id="listStatus"></span>
                 </div>
@@ -534,13 +571,34 @@
 
             <div class="two-col">
                 <div class="section">
+                    <h2>⏱️ Round &amp; Game</h2>
+                    <p class="hint"><strong>End Round</strong> ends the round as if its time ran out; the leader wins it (needs a round in progress).
+                        <strong>End Game</strong> ends the game with the scores as they stand and reports results as usual.</p>
+                    <div class="btn-row">
+                        <button class="btn btn-warn" onclick="endRound()">End Round</button>
+                        <button class="btn btn-danger" onclick="endGame()">End Game</button>
+                    </div>
+                </div>
+
+                <div class="section">
                     <h2>👥 Teams</h2>
-                    <p class="hint">Spreads everyone over the chosen number of teams. Shuffle re-deals the current players.</p>
+                    <p class="hint">Needs a live team round with enough players. Shuffle queues a balanced shuffle among occupied teams.</p>
                     <div class="command-input">
-                        <input type="number" id="teamCount" min="1" max="8" value="2">
+                        <input type="number" id="teamCount" min="2" max="8" value="2">
                         <button class="btn btn-primary" onclick="setTeamCount()">Set Team Count</button>
+                        <button class="btn btn-secondary" onclick="showTeams()">Show Teams</button>
                         <button class="btn btn-warn" onclick="shuffleTeams()">Shuffle Teams</button>
                     </div>
+                    <label class="field-label" for="movePlayer">Move a player</label>
+                    <div class="command-input">
+                        <select id="movePlayer"><option value="">No players online</option></select>
+                        <select id="moveTeam">
+                            <option>red</option><option>blue</option><option>green</option><option>orange</option>
+                            <option>purple</option><option>gold</option><option>brown</option><option>pink</option>
+                        </select>
+                        <button class="btn btn-primary" onclick="movePlayerTeam()">Move</button>
+                    </div>
+                    <p class="hint">A team's last player can't be moved during a round.</p>
                 </div>
 
                 <div class="section">
@@ -558,6 +616,7 @@
                         <button class="btn btn-kick" onclick="voteKickSelected()">Start Kick Vote</button>
                     </div>
                     <div class="btn-row">
+                        <button class="btn btn-secondary" onclick="showVote()">Show Vote</button>
                         <button class="btn btn-success" onclick="passVote()">Pass Vote</button>
                         <button class="btn btn-danger" onclick="cancelVote()">Cancel Vote</button>
                     </div>
@@ -603,6 +662,14 @@
                 </div>
                 <hr>
                 <h2>🚫 Ban Management</h2>
+                <p class="hint">Bans are kept by the server, so this list is the server's own. A ban on a connected player covers their ID, IP and device together, and unbanning any one entry lifts the whole ban.</p>
+                <label class="field-label" for="offlineBanTarget">Ban someone who isn't connected</label>
+                <div class="command-input">
+                    <input type="text" id="offlineBanTarget" placeholder="Player ID, IP address or range (e.g. 198.51.100.0/24)">
+                    <input type="text" id="offlineBanTime" placeholder="Time: 30m, 12h, 7d... (empty = permanent)" style="max-width: 280px;">
+                    <input type="text" id="offlineBanReason" placeholder="Reason (optional)">
+                    <button class="btn btn-ban" onclick="banTarget()">Ban</button>
+                </div>
                 <div class="table-container">
                     <table>
                         <thead>
@@ -610,15 +677,16 @@
                                 <th>Name</th>
                                 <th>UID</th>
                                 <th>IP</th>
+                                <th>Device</th>
                                 <th>Reason</th>
                                 <th>Banned At</th>
                                 <th>Expires</th>
-                                <th>Mod</th>
+                                <th>By</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody id="banListBody">
-                            <tr><td colspan="8" class="loading">Loading bans...</td></tr>
+                            <tr><td colspan="9" class="loading">Loading bans...</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -641,6 +709,31 @@
                     <button class="btn btn-primary" onclick="setServerPassword()">Set Password</button>
                     <button class="btn btn-danger" onclick="clearServerPassword()">Clear Password</button>
                 </div>
+            </div>
+
+            <div class="section">
+                <h2>🚦 Join Limits &amp; VPN</h2>
+                <p class="hint">Max ping is only checked as players join; players already in stay. Off (or 0) lets everyone in, and the change lasts until the server restarts.
+                    VPN allowances apply on every server sharing the ban list. For a player who was refused as a VPN, use the ID from their "refused" line under Activity.</p>
+                <label class="field-label" for="maxPingInput">Max ping to join (milliseconds, up to 1000)</label>
+                <div class="command-input">
+                    <input type="number" id="maxPingInput" min="1" max="1000" placeholder="e.g. 150">
+                    <button class="btn btn-primary" onclick="setMaxPing()">Set Max Ping</button>
+                    <button class="btn btn-secondary" onclick="setMaxPing('off')">No Limit</button>
+                    <button class="btn btn-secondary" onclick="callGame('maxping')">Show</button>
+                </div>
+                <label class="field-label" for="vpnAddress">VPN blocking</label>
+                <div class="command-input">
+                    <input type="text" id="vpnAddress" placeholder="IP address to check (empty = overall status)">
+                    <button class="btn btn-info" onclick="checkVpn()">Check</button>
+                </div>
+                <div class="command-input">
+                    <input type="text" id="vpnAllowTarget" placeholder="Player ID, IP or range">
+                    <input type="text" id="vpnAllowNote" placeholder="Note (optional)">
+                    <button class="btn btn-success" onclick="vpnAllow()">Allow</button>
+                    <button class="btn btn-danger" onclick="vpnRevoke()">Revoke</button>
+                </div>
+                <div class="result-line" id="settingsResult"></div>
             </div>
 
             <div class="section">
@@ -700,17 +793,24 @@
                     <button class="btn btn-primary" onclick="quickCommand('!ai backup')">Backup</button>
                     <button class="btn btn-primary" onclick="quickCommand('!ai forget')">Forget Memory</button>
                 </div>
-                <h3>Game control (result shows here, not in game chat)</h3>
+                <h3>Game control (the result shows here, not in game chat)</h3>
                 <div style="display: flex; flex-wrap: wrap; gap: 8px;">
                     <button class="btn btn-info" onclick="callGame('maps')">maps</button>
                     <button class="btn btn-info" onclick="callGame('modes')">modes</button>
+                    <button class="btn btn-info" onclick="showNext()">nextmap (show)</button>
+                    <button class="btn btn-info" onclick="showTeams()">teamcount (show)</button>
                     <button class="btn btn-warn" onclick="shuffleTeams()">shuffle</button>
+                    <button class="btn btn-warn" onclick="endRound()">endround</button>
+                    <button class="btn btn-danger" onclick="endGame()">endgame</button>
+                    <button class="btn btn-info" onclick="showVote()">vote</button>
                     <button class="btn btn-vote" onclick="startVote('endround')">startvote endround</button>
                     <button class="btn btn-vote" onclick="startVote('endgame')">startvote endgame</button>
                     <button class="btn btn-vote" onclick="startVote('shuffle')">startvote shuffle</button>
                     <button class="btn btn-vote" onclick="startVote('playlist')">startvote playlist</button>
                     <button class="btn btn-success" onclick="passVote()">passvote</button>
                     <button class="btn btn-danger" onclick="cancelVote()">cancelvote</button>
+                    <button class="btn btn-info" onclick="callGame('vpn')">vpn</button>
+                    <button class="btn btn-info" onclick="callGame('maxping')">maxping</button>
                 </div>
                 <div class="result-line" id="quickGameResult"></div>
             </div>
@@ -834,6 +934,9 @@
                 fetchPlayers();
                 if (!listsLoaded) loadLists();
             }
+            if (tabName === 'activity') {
+                fetchActivity();
+            }
             if (tabName === 'moderation') {
                 fetchModList();
                 fetchBans();
@@ -906,7 +1009,11 @@
                 setStat('serverName', data.server_name || '--');
                 setStat('currentMode', data.mode || '--');
                 setStat('nextGame', fmtVal(data.next_game));
-                setStat('activeVote', fmtVal(data.vote));
+                setStat('activeVote', fmtVote(data.vote));
+                setStat('antiCheat', data.anti_cheat
+                    ? data.anti_cheat + (data.anti_cheat_active === false ? ' (not checking this game)' : '') : '--');
+                setStat('vpnBlock', data.block_vpn === null || data.block_vpn === undefined ? '--' : (data.block_vpn ? 'Blocking' : 'Allowed'));
+                setStat('maxPing', data.max_ping === null || data.max_ping === undefined ? '--' : (Number(data.max_ping) === 0 ? 'No limit' : data.max_ping + ' ms'));
                 setStat('passwordState', data.password_required === null || data.password_required === undefined
                     ? '--' : (data.password_required ? 'Set' : 'None'));
                 const voteOn = isSet(data.vote) || isSet(data.playlist_vote);
@@ -916,7 +1023,7 @@
                 setStat('gcMap', data.current_map || '--');
                 setStat('gcMode', data.mode || '--');
                 setStat('gcNext', fmtVal(data.next_game));
-                let voteText = fmtVal(data.vote);
+                let voteText = fmtVote(data.vote);
                 if (isSet(data.playlist_vote)) {
                     voteText = (isSet(data.vote) ? voteText + ' + ' : '') + 'Playlist ballot: ' + fmtVal(data.playlist_vote);
                 }
@@ -950,7 +1057,7 @@
                 const players = await response.json();
                 const tbody = document.getElementById('playersTableBody');
                 lastPlayers = players || [];
-                fillVoteKickSelect();
+                fillPlayerSelects();
 
                 if (!players || players.length === 0) {
                     tbody.innerHTML = '<tr><td colspan="11" class="loading">No players online</td></tr>';
@@ -1027,80 +1134,117 @@
                 const tbody = document.getElementById('banListBody');
 
                 if (!bans || bans.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="8" class="loading">No active bans</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="9" class="loading">No active bans</td></tr>';
                     return;
                 }
 
+                const short = (v) => v ? `<span title="${escapeAttr(v)}">${escapeHtml(v.length > 14 ? v.slice(0, 12) + '…' : v)}</span>` : '-';
                 let html = '';
                 for (const b of bans) {
                     const expires = b.permanent ? 'Permanent' : (b.expires_at || '-');
+                    const id = b.identifier || b.uid || b.ip || b.name || '';
                     html += `<tr>
                         <td>${escapeHtml(b.name)}</td>
-                        <td>${escapeHtml(b.uid || '-')}</td>
+                        <td>${short(b.uid)}</td>
                         <td>${escapeHtml(b.ip || '-')}</td>
+                        <td>${short(b.device)}</td>
                         <td>${escapeHtml(b.reason || '-')}</td>
                         <td>${escapeHtml(b.banned_at || '-')}</td>
                         <td>${escapeHtml(expires)}</td>
                         <td>${escapeHtml(b.moderator || '-')}</td>
                         <td class="action-buttons">
-                            <button class="btn btn-success" data-uid="${escapeAttr(b.uid || '')}" data-ip="${escapeAttr(b.ip || '')}" data-name="${escapeAttr(b.name)}" onclick="unbanPlayer(this.dataset.uid, this.dataset.ip, this.dataset.name)">Unban</button>
+                            <button class="btn btn-success" data-id="${escapeAttr(id)}" data-name="${escapeAttr(b.name)}" onclick="unbanPlayer(this.dataset.id, this.dataset.name)">Unban</button>
                         </td>
                     </tr>`;
                 }
                 tbody.innerHTML = html;
             } catch (error) {
                 console.error('Error fetching bans:', error);
-                document.getElementById('banListBody').innerHTML = '<tr><td colspan="8" class="loading">Error loading bans</td></tr>';
+                document.getElementById('banListBody').innerHTML = '<tr><td colspan="9" class="loading">Error loading bans</td></tr>';
             }
         }
 
-        async function unbanPlayer(uid, ip, name) {
-            // Reclaimer's "unban" RCON command takes a player ID or IP --
-            // not a name -- so send whichever identifier the ban record
-            // actually has (uid preferred, then ip). Name is passed along
-            // only for the confirm dialog and as a last-resort fallback.
-            if (!confirm(`Unban ${name}?`)) return;
+        // ───────────── Activity feed ─────────────
+        async function fetchActivity() {
             try {
-                await fetch(`${API_URL}/api/unban`, {
+                const response = await fetch(`${API_URL}/api/activity?limit=60`);
+                const events = await response.json();
+                const tbody = document.getElementById('activityBody');
+                if (!events || events.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="3" class="loading">Nothing yet — events appear here as they happen.</td></tr>';
+                    return;
+                }
+                let html = '';
+                for (const e of events) {
+                    const when = e.time ? new Date(e.time * 1000).toLocaleTimeString() : '-';
+                    const failed = e.event === 'control' && /FAILED/.test(e.summary || '');
+                    html += `<tr>
+                        <td>${escapeHtml(when)}</td>
+                        <td><span class="ev ev-${escapeAttr(failed ? 'failed' : e.event)}">${escapeHtml(e.event || '?')}</span></td>
+                        <td>${escapeHtml(e.summary || '')}</td>
+                    </tr>`;
+                }
+                tbody.innerHTML = html;
+            } catch (error) {
+                console.error('Error fetching activity:', error);
+            }
+        }
+
+        async function unbanPlayer(identifier, name) {
+            // The server takes a player ID, device, IP/range or an unambiguous
+            // name, and lifts the whole linked ban.
+            if (!confirm(`Unban ${name}?`)) return;
+            await modAction('/api/unban', { identifier: identifier, name: name }, [fetchBans]);
+        }
+
+        // POSTs one moderation action and shows what the server actually said
+        // (a refusal such as "No player is named ..." is shown as a failure).
+        async function modAction(path, body, refresh) {
+            try {
+                const res = await fetch(`${API_URL}${path}`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'Authorization': authHeader()
                     },
-                    body: JSON.stringify({ uid: uid, ip: ip, name: name })
+                    body: JSON.stringify(body)
                 });
-                setTimeout(() => fetchBans(), 500);
+                if (res.status === 401) return null;   // the fetch wrapper already explained
+                const data = await res.json().catch(() => ({}));
+                const ok = res.ok && data.success !== false;
+                toast(data.message || data.error || (ok ? 'Done.' : 'Failed.'), ok);
+                for (const refreshFn of refresh || []) setTimeout(refreshFn, 800);
+                return data;
             } catch (error) {
-                console.error('Error unbanning player:', error);
+                toast(`Could not reach the bot at ${API_URL}.`, false);
+                return null;
             }
         }
 
         async function kickPlayer(name) {
-            if (confirm(`Kick ${name}?`)) {
-                await fetch(`${API_URL}/api/kick`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': authHeader()
-                    },
-                    body: JSON.stringify({ name: name })
-                });
-                setTimeout(() => fetchPlayers(), 1000);
-            }
+            const reason = prompt(`Kick ${name}?\nOptional reason (Cancel to abort):`, '');
+            if (reason === null) return;
+            await modAction('/api/kick', { name: name, reason: reason.trim() }, [fetchPlayers]);
         }
 
         async function banPlayer(name) {
-            if (confirm(`Permanently ban ${name}?`)) {
-                await fetch(`${API_URL}/api/ban`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': authHeader()
-                    },
-                    body: JSON.stringify({ name: name })
-                });
-                setTimeout(() => fetchPlayers(), 1000);
-                setTimeout(() => fetchBans(), 1000);
+            const reason = prompt(`Permanently ban ${name}?\nOptional reason (Cancel to abort):`, '');
+            if (reason === null) return;
+            await modAction('/api/ban', { name: name, reason: reason.trim() }, [fetchPlayers, fetchBans]);
+        }
+
+        // Ban a player who isn't connected, by player ID, IP address or range.
+        async function banTarget() {
+            const target = requireValue('offlineBanTarget', 'a player ID, IP address or range');
+            if (!target) return;
+            const duration = document.getElementById('offlineBanTime').value.trim().toLowerCase();
+            const reason = document.getElementById('offlineBanReason').value.trim();
+            if (!confirm(`Ban ${target} ${duration ? 'for ' + duration : 'permanently'}?`)) return;
+            const data = await modAction('/api/ban', { name: target, duration: duration, reason: reason }, [fetchBans]);
+            if (data && data.success) {
+                document.getElementById('offlineBanTarget').value = '';
+                document.getElementById('offlineBanTime').value = '';
+                document.getElementById('offlineBanReason').value = '';
             }
         }
 
@@ -1112,17 +1256,9 @@
 
         async function confirmTempban() {
             const duration = document.getElementById('tempbanDuration').value;
-            await fetch(`${API_URL}/api/tempban`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': authHeader()
-                },
-                body: JSON.stringify({ name: currentTempbanPlayer, duration: parseInt(duration) })
-            });
+            const name = currentTempbanPlayer;
             closeModal();
-            setTimeout(() => fetchPlayers(), 1000);
-            setTimeout(() => fetchBans(), 1000);
+            await modAction('/api/tempban', { name: name, duration: parseInt(duration) }, [fetchPlayers, fetchBans]);
         }
 
         function showWarnModal(name) {
@@ -1144,25 +1280,13 @@
         }
 
         async function mutePlayer(name) {
-            await fetch(`${API_URL}/api/mute`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': authHeader()
-                },
-                body: JSON.stringify({ name: name })
-            });
+            const duration = prompt(`Mute ${name} for how long?\nExamples: 30m, 2h, 1d. Leave empty to mute until unmuted (Cancel to abort):`, '');
+            if (duration === null) return;
+            await modAction('/api/mute', { name: name, duration: duration.trim().toLowerCase() }, [fetchPlayers]);
         }
 
         async function unmutePlayer(name) {
-            await fetch(`${API_URL}/api/unmute`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': authHeader()
-                },
-                body: JSON.stringify({ name: name })
-            });
+            await modAction('/api/unmute', { name: name }, [fetchPlayers]);
         }
 
         async function addMod() {
@@ -1365,10 +1489,27 @@
 
         // Health/shields come as plain numbers. Values up to 1 are treated as
         // fractions, anything else as a 0-100 scale, only to size the bars.
-        function barPct(v) {
+        // Health and shields are native fractions (1 = full), as the server sends them.
+        function pct(v) {
             const n = Number(v);
             if (!isFinite(n)) return 0;
-            return Math.max(0, Math.min(100, n <= 1 ? n * 100 : n));
+            return Math.round(Math.max(0, Math.min(1, n)) * 100);
+        }
+
+        // A running vote: subject and caller, with the tally when the server gives one.
+        function fmtVote(v) {
+            if (!isSet(v)) return 'None';
+            if (typeof v === 'object' && !Array.isArray(v) && v.subject) {
+                let text = String(v.subject);
+                if (v.caller) text += ` (called by ${v.caller})`;
+                const bits = [];
+                if (v.yes !== undefined && v.yes !== null) bits.push(`${v.yes} yes`);
+                if (v.no !== undefined && v.no !== null) bits.push(`${v.no} no`);
+                if (v.needed !== undefined && v.needed !== null) bits.push(`needs ${v.needed}`);
+                if (v.seconds !== undefined && v.seconds !== null) bits.push(`${Math.round(v.seconds)}s left`);
+                return bits.length ? `${text} — ${bits.join(', ')}` : text;
+            }
+            return fmtVal(v);
         }
 
         function vitalsHtml(p) {
@@ -1376,11 +1517,11 @@
             if (p.health === null || p.health === undefined) {
                 return p.alive === true ? '<span class="pill pill-alive">Alive</span>' : '-';
             }
-            const sh = (p.shields === null || p.shields === undefined) ? '' :
-                `<div class="bar"><div class="sh" style="width:${barPct(p.shields)}%"></div></div>`;
+            const hasShields = p.shields !== null && p.shields !== undefined;
             return `<div class="vitals">
-                <div class="nums">❤ ${escapeHtml(String(p.health))}${p.shields === null || p.shields === undefined ? '' : ' &nbsp;🛡 ' + escapeHtml(String(p.shields))}</div>
-                <div class="bar"><div class="hp" style="width:${barPct(p.health)}%"></div></div>${sh}
+                <div class="nums">❤ ${pct(p.health)}%${hasShields ? ' &nbsp;🛡 ' + pct(p.shields) + '%' : ''}</div>
+                <div class="bar"><div class="hp" style="width:${pct(p.health)}%"></div></div>
+                ${hasShields ? `<div class="bar"><div class="sh" style="width:${pct(p.shields)}%"></div></div>` : ''}
             </div>`;
         }
 
@@ -1395,7 +1536,7 @@
         }
 
         function showGameResult(text, ok) {
-            for (const id of ['gameResult', 'quickGameResult']) {
+            for (const id of ['gameResult', 'quickGameResult', 'settingsResult']) {
                 const el = document.getElementById(id);
                 if (!el) continue;
                 el.textContent = text;
@@ -1466,11 +1607,76 @@
             await callGame('mode', quoteName(name));
         }
 
-        async function gameLoad() {
-            const text = requireValue('loadInput', 'what to load');
-            if (!text) return;
-            if (!confirm(`Load "${text}"? This ends the current game.`)) return;
-            await callGame('load', text);
+        // Load both: `load <map> <mode>` (quote references with spaces).
+        async function gameLoadBoth() {
+            const map = requireValue('mapInput', 'a map');
+            if (!map) return;
+            const mode = requireValue('modeInput', 'a mode');
+            if (!mode) return;
+            if (!confirm(`Load ${map} with ${mode}? This ends the current game.`)) return;
+            await callGame('load', `${quoteName(map)} ${quoteName(mode)}`);
+        }
+
+        // `nextmap <map> [<mode>]`: queues the next game without ending this one.
+        async function gameNext() {
+            const map = requireValue('mapInput', 'a map');
+            if (!map) return;
+            const mode = document.getElementById('modeInput').value.trim();
+            await callGame('nextmap', quoteName(map) + (mode ? ' ' + quoteName(mode) : ''));
+        }
+
+        async function showNext() { await callGame('nextmap'); }
+        async function showTeams() { await callGame('teamcount'); }
+        async function showVote() { await callGame('vote'); }
+
+        async function endRound() {
+            if (!confirm('End the current round now? The leader wins it.')) return;
+            await callGame('endround');
+        }
+
+        async function endGame() {
+            if (!confirm('End the game now with the scores as they stand?')) return;
+            await callGame('endgame');
+        }
+
+        async function movePlayerTeam() {
+            const player = document.getElementById('movePlayer').value;
+            const team = document.getElementById('moveTeam').value;
+            if (!player) {
+                toast('Pick a player first.', false);
+                return;
+            }
+            await callGame('team', `${quoteName(player)} ${team}`);
+        }
+
+        async function setMaxPing(value) {
+            if (value === undefined) {
+                value = document.getElementById('maxPingInput').value.trim();
+                if (!value) {
+                    toast('Enter a ping in milliseconds, or use No Limit.', false);
+                    return;
+                }
+            }
+            await callGame('maxping', String(value));
+        }
+
+        async function checkVpn() {
+            await callGame('vpn', document.getElementById('vpnAddress').value.trim());
+        }
+
+        async function vpnAllow() {
+            const target = requireValue('vpnAllowTarget', 'a player ID, IP or range');
+            if (!target) return;
+            const note = document.getElementById('vpnAllowNote').value.trim();
+            const data = await callGame('vpnallow', target + (note ? ' ' + note : ''));
+            if (data && data.ok) document.getElementById('vpnAllowNote').value = '';
+        }
+
+        async function vpnRevoke() {
+            const target = requireValue('vpnAllowTarget', 'the player ID, IP or range exactly as it was allowed');
+            if (!target) return;
+            if (!confirm(`Take back the VPN allowance for ${target}?`)) return;
+            await callGame('vpnrevoke', target);
         }
 
         async function setTeamCount() {
@@ -1493,25 +1699,27 @@
             await callGame('startvote', args);
         }
 
-        function fillVoteKickSelect() {
-            const select = document.getElementById('voteKickPlayer');
-            if (!select) return;
-            const previous = select.value;
-            select.innerHTML = '';
-            if (!lastPlayers.length) {
-                const opt = document.createElement('option');
-                opt.value = '';
-                opt.textContent = 'No players online';
-                select.appendChild(opt);
-                return;
+        function fillPlayerSelects() {
+            for (const id of ['voteKickPlayer', 'movePlayer']) {
+                const select = document.getElementById(id);
+                if (!select) continue;
+                const previous = select.value;
+                select.innerHTML = '';
+                if (!lastPlayers.length) {
+                    const opt = document.createElement('option');
+                    opt.value = '';
+                    opt.textContent = 'No players online';
+                    select.appendChild(opt);
+                    continue;
+                }
+                for (const p of lastPlayers) {
+                    const opt = document.createElement('option');
+                    opt.value = p.name;
+                    opt.textContent = p.name;
+                    select.appendChild(opt);
+                }
+                if (previous && lastPlayers.some(p => p.name === previous)) select.value = previous;
             }
-            for (const p of lastPlayers) {
-                const opt = document.createElement('option');
-                opt.value = p.name;
-                opt.textContent = p.name;
-                select.appendChild(opt);
-            }
-            if (previous && lastPlayers.some(p => p.name === previous)) select.value = previous;
         }
 
         // A kick vote still goes through the bot's protections (it refuses
@@ -1568,26 +1776,29 @@
         // ───────────── Map & mode lists ─────────────
         let listsLoaded = false;
 
-        function fillList(kind, names) {
+        function fillList(kind, entries) {
             const list = document.getElementById(kind === 'map' ? 'mapList' : 'modeList');
             const chips = document.getElementById(kind === 'map' ? 'mapChips' : 'modeChips');
             const input = document.getElementById(kind === 'map' ? 'mapInput' : 'modeInput');
             list.innerHTML = '';
             chips.innerHTML = '';
-            if (!names.length) {
+            if (!entries.length) {
                 chips.innerHTML = `<span class="small-text">The server returned no ${kind}s.</span>`;
                 return;
             }
-            for (const name of names) {
+            for (const entry of entries) {
+                // `reference` is what the server's commands take; `name` is just the label.
                 const opt = document.createElement('option');
-                opt.value = name;
+                opt.value = entry.reference;
+                if (entry.name && entry.name !== entry.reference) opt.label = entry.name;
                 list.appendChild(opt);
 
                 const chip = document.createElement('button');
                 chip.type = 'button';
                 chip.className = 'chip';
-                chip.textContent = name;
-                chip.addEventListener('click', () => { input.value = name; input.focus(); });
+                chip.textContent = entry.name || entry.reference;
+                chip.title = [entry.kind, entry.reference].filter(Boolean).join(' · ');
+                chip.addEventListener('click', () => { input.value = entry.reference; input.focus(); });
                 chips.appendChild(chip);
             }
         }
@@ -1601,8 +1812,11 @@
                     const res = await fetch(`${API_URL}/api/${kind}s`);
                     const data = await res.json();
                     if (res.ok) {
-                        fillList(kind, data.names || []);
-                        if (kind === 'map') maps = data.names || []; else modes = data.names || [];
+                        const entries = (data.entries && data.entries.length)
+                            ? data.entries
+                            : (data.names || []).map(n => ({ name: n, reference: n, kind: '' }));
+                        fillList(kind, entries);
+                        if (kind === 'map') maps = entries; else modes = entries;
                     } else {
                         problem = data.error || `The server did not return its ${kind}s.`;
                         document.getElementById(kind === 'map' ? 'mapChips' : 'modeChips').innerHTML =
@@ -1658,6 +1872,7 @@
             fetchStatus();
             fetchPlayers();
             if (document.getElementById('tab-players').classList.contains('active')) fetchKills();
+            if (document.getElementById('tab-activity').classList.contains('active')) fetchActivity();
         }, 5000);
 
         window.onclick = function(event) {
