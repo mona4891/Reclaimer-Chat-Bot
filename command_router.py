@@ -12,6 +12,13 @@ import commands_mod
 
 
 def handle_command(player_name: str, player_uid: str, player_ip: str, command: str):
+    """Run one `!ai` command. Anything it does on the server is credited to
+    the player who typed it ("Bravo was kicked by Alice.")."""
+    with rcon.acting_as(player_name):
+        _handle_command(player_name, player_uid, player_ip, command)
+
+
+def _handle_command(player_name: str, player_uid: str, player_ip: str, command: str):
     parts = command.strip().split()
     cmd = parts[0].lower() if parts else ""
     args = parts[1:]

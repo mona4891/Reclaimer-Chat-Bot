@@ -8,7 +8,10 @@ and shouldannounce, which have no Reclaimer equivalent. Map/mode/team/vote
 control and the server name/password are back, as POST /api/game (runs
 commands_game.py as the owner and returns the result text), with
 GET /api/maps and /api/modes feeding the dashboard's dropdowns and
-GET /api/kills serving the live kill feed.
+GET /api/kills serving the live kill feed and GET /api/activity the other
+server events (joins, kicks, bans, votes, anti-cheat flags, action results).
+Everything the dashboard does on the server is credited to the owner's
+in-game name ("Bravo was kicked by Alice.").
 """
 
 import logging
@@ -61,6 +64,10 @@ def api_status():
         'votes_enabled': info.get('votes_enabled'),
         'password_required': info.get('password_required'),
         'max_players': info.get('maxPlayers', 0),
+        'anti_cheat': info.get('anti_cheat'),
+        'anti_cheat_active': info.get('anti_cheat_active'),
+        'block_vpn': info.get('block_vpn'),
+        'max_ping': info.get('max_ping'),
     })
 
 
@@ -79,6 +86,8 @@ def api_players():
             'muted': p.get('muted', False),
             'admin': p.get('admin', False),
             'team': p.get('team'),
+            'number': p.get('number'),
+            'engine_id': p.get('engineId'),
             'betrayals': p.get('betrayals', 0),
             'suicides': p.get('suicides', 0),
             # Live fields from newer Reclaimer builds; absent (None) on
@@ -109,32 +118,54 @@ def api_command():
     return jsonify({'result': result})
 
 
+def _acting():
+    """Credit what follows to the owner's in-game name."""
+    return rcon.acting_as(_owner_name())
+
+
+def _moderation_result(ok: bool, messages: list, success_text: str):
+    text = ' '.join(messages) if messages else (success_text if ok else 'Failed.')
+    body = {'success': bool(ok), 'message': text if not ok else success_text, 'messages': messages}
+    return jsonify(body), (200 if ok else 502)
+
+
 @web_app.route('/api/kick', methods=['POST'])
 def api_kick():
     if not _authorized(request):
         return jsonify({'error': 'Unauthorized'}), 401
 
-    data = request.json
+    data = request.json or {}
     player_name = data.get('name', '')
     if not player_name:
         return jsonify({'error': 'No player name'}), 400
 
-    moderation_actions.do_kick("WebDashboard", state.OWNER_UUID, player_name)
-    return jsonify({'success': True, 'message': f'Kicked {player_name}'})
+    messages = []
+    with _acting():
+        ok = moderation_actions.do_kick("WebDashboard", state.OWNER_UUID, player_name,
+                                        str(data.get('reason', '')).strip(), say=messages.append)
+    return _moderation_result(ok, messages, f'Kicked {player_name}')
 
 
 @web_app.route('/api/ban', methods=['POST'])
 def api_ban():
+    """Body: name (a connected player, or a player ID / IP / range for
+    someone who isn't), optional duration ("7d"...) and reason."""
     if not _authorized(request):
         return jsonify({'error': 'Unauthorized'}), 401
 
-    data = request.json
-    player_name = data.get('name', '')
-    if not player_name:
+    data = request.json or {}
+    target = data.get('name', '') or data.get('target', '')
+    if not target:
         return jsonify({'error': 'No player name'}), 400
+    duration = str(data.get('duration', '') or '').strip().lower()
+    if duration and not bans.is_duration(duration):
+        return jsonify({'error': 'Duration must look like 90s, 30m, 12h, 7d or 2w'}), 400
 
-    moderation_actions.do_ban("WebDashboard", state.OWNER_UUID, player_name)
-    return jsonify({'success': True, 'message': f'Banned {player_name}'})
+    messages = []
+    with _acting():
+        ok = moderation_actions.do_ban("WebDashboard", state.OWNER_UUID, target,
+                                       str(data.get('reason', '')).strip(), duration, say=messages.append)
+    return _moderation_result(ok, messages, f'Banned {target}')
 
 
 @web_app.route('/api/tempban', methods=['POST'])
@@ -142,28 +173,37 @@ def api_tempban():
     if not _authorized(request):
         return jsonify({'error': 'Unauthorized'}), 401
 
-    data = request.json
+    data = request.json or {}
     player_name = data.get('name', '')
     duration = data.get('duration', 5)
     if not player_name:
         return jsonify({'error': 'No player name'}), 400
 
-    moderation_actions.do_tempban("WebDashboard", state.OWNER_UUID, player_name, duration)
-    return jsonify({'success': True, 'message': f'Temp banned {player_name} for {duration} minutes'})
+    messages = []
+    with _acting():
+        ok = moderation_actions.do_tempban("WebDashboard", state.OWNER_UUID, player_name, duration, say=messages.append)
+    return _moderation_result(ok, messages, f'Temp banned {player_name} for {duration} minutes')
 
 
 @web_app.route('/api/mute', methods=['POST'])
 def api_mute():
+    """Body: name, optional duration ("30m"...) and reason."""
     if not _authorized(request):
         return jsonify({'error': 'Unauthorized'}), 401
 
-    data = request.json
+    data = request.json or {}
     player_name = data.get('name', '')
     if not player_name:
         return jsonify({'error': 'No player name'}), 400
+    duration = str(data.get('duration', '') or '').strip().lower()
+    if duration and not bans.is_duration(duration):
+        return jsonify({'error': 'Duration must look like 90s, 30m, 12h, 7d or 2w'}), 400
 
-    rcon.send_command(f"mute {rcon.quote_if_needed(player_name)}")
-    return jsonify({'success': True, 'message': f'Muted {player_name}'})
+    messages = []
+    with _acting():
+        ok = moderation_actions.do_mute("WebDashboard", state.OWNER_UUID, player_name, duration,
+                                        str(data.get('reason', '')).strip(), say=messages.append)
+    return _moderation_result(ok, messages, f'Muted {player_name}')
 
 
 @web_app.route('/api/unmute', methods=['POST'])
@@ -171,13 +211,15 @@ def api_unmute():
     if not _authorized(request):
         return jsonify({'error': 'Unauthorized'}), 401
 
-    data = request.json
+    data = request.json or {}
     player_name = data.get('name', '')
     if not player_name:
         return jsonify({'error': 'No player name'}), 400
 
-    rcon.send_command(f"unmute {rcon.quote_if_needed(player_name)}")
-    return jsonify({'success': True, 'message': f'Unmuted {player_name}'})
+    messages = []
+    with _acting():
+        ok = moderation_actions.do_unmute("WebDashboard", state.OWNER_UUID, player_name, say=messages.append)
+    return _moderation_result(ok, messages, f'Unmuted {player_name}')
 
 
 @web_app.route('/api/say', methods=['POST'])
@@ -237,19 +279,18 @@ def api_unban():
     if not _authorized(request):
         return jsonify({'error': 'Unauthorized'}), 401
 
-    data = request.json
-    # Reclaimer's unban command needs the player ID or IP that was
-    # actually banned, not a display name (see bans.py) — the dashboard
-    # should pass whatever /api/bans returned as that entry's "uid" (or
-    # "ip" if uid is empty), not the "name" field.
-    identifier = data.get('uid') or data.get('ip') or data.get('name', '')
+    data = request.json or {}
+    # The server takes a name (only if one active ban has it), player ID,
+    # device fingerprint, IP or range, and lifts the whole linked action.
+    # The dashboard sends the row's "identifier" (or its uid/ip/name).
+    identifier = data.get('identifier') or data.get('uid') or data.get('ip') or data.get('name', '')
     if not identifier:
         return jsonify({'error': 'No identifier'}), 400
 
-    ok = bans.remove_ban(identifier, moderator="WebDashboard")
-    if not ok:
-        return jsonify({'success': False, 'message': f'Unban failed for {identifier}'}), 502
-    return jsonify({'success': True, 'message': f'Unbanned {identifier}'})
+    messages = []
+    with _acting():
+        ok = moderation_actions.do_unban("WebDashboard", identifier, say=messages.append)
+    return _moderation_result(ok, messages, f'Unbanned {identifier}')
 
 
 @web_app.route('/api/mods', methods=['GET'])
@@ -275,9 +316,9 @@ def _owner_name() -> str:
 
 @web_app.route('/api/game', methods=['POST'])
 def api_game():
-    """Run a game-control command (maps, modes, map, mode, load, nextmap,
-    teamcount, shuffle, startvote, passvote, cancelvote, servername,
-    password) as the owner and return what it would have said in chat:
+    """Run a game-control command (any of config.GAME_CMDS, plus the
+    owner-only config.GAME_ADMIN_CMDS: servername, password, vpnallow,
+    vpnrevoke) as the owner and return what it would have said in chat:
     {"ok": bool, "messages": [str, ...]}. Body: {"action": "...",
     "args": "..."} with args exactly as you'd type them after the command."""
     if not _authorized(request):
@@ -286,40 +327,55 @@ def api_game():
     data = request.json or {}
     action = str(data.get('action', '')).strip().lower()
     args = str(data.get('args', '')).split()
-    owner_only = {'servername', 'password'}
+    owner_only = config.GAME_ADMIN_CMDS
     if action not in config.GAME_CMDS and action not in owner_only:
         return jsonify({'error': f'Unknown game action: {action}'}), 400
 
     messages = []
     try:
         owner = _owner_name()
-        if action in owner_only:
-            ok = commands_game.handle_admin(owner, state.OWNER_UUID, action, args, say=messages.append)
-        else:
-            ok = commands_game.handle(owner, state.OWNER_UUID, action, args, say=messages.append)
+        with rcon.acting_as(owner):
+            if action in owner_only:
+                ok = commands_game.handle_admin(owner, state.OWNER_UUID, action, args, say=messages.append)
+            else:
+                ok = commands_game.handle(owner, state.OWNER_UUID, action, args, say=messages.append)
     except Exception as e:
         logger.error(f"Web game action failed: {e}")
         return jsonify({'ok': False, 'messages': [f'Error: {e}']}), 500
     return jsonify({'ok': bool(ok), 'messages': messages})
 
 
-def _names_endpoint(command: str, key: str):
-    names, error = commands_game.list_names(command, key)
-    if names is None:
-        return jsonify({'names': [], 'error': error}), 502
-    return jsonify({'names': names})
+def _entries_endpoint(command: str, key: str):
+    entries, error = commands_game.list_entries(command, key)
+    if entries is None:
+        return jsonify({'names': [], 'entries': [], 'error': error}), 502
+    # `entries`: {name, reference, kind} rows -- send `reference` back to the
+    # server. `names` is just the references, for simple callers.
+    return jsonify({'names': [e['reference'] for e in entries], 'entries': entries})
 
 
 @web_app.route('/api/maps', methods=['GET'])
 def api_maps():
-    """Map names the server accepts (its own `maps` command)."""
-    return _names_endpoint('maps', 'maps')
+    """Installed maps as the server lists them (its own `maps` command)."""
+    return _entries_endpoint('maps', 'maps')
 
 
 @web_app.route('/api/modes', methods=['GET'])
 def api_modes():
-    """Mode names the server accepts (its own `modes` command)."""
-    return _names_endpoint('modes', 'modes')
+    """Installed modes and saved game variants (its own `modes` command)."""
+    return _entries_endpoint('modes', 'modes')
+
+
+@web_app.route('/api/activity', methods=['GET'])
+def api_activity():
+    """Recent joins, leaves, kicks, bans, mutes, votes, phase changes,
+    anti-cheat flags and queued-action results, newest first.
+    ?limit=N (default 40, max 200)."""
+    try:
+        limit = max(1, min(int(request.args.get('limit', 40)), 200))
+    except ValueError:
+        limit = 40
+    return jsonify(list(state.activity)[-limit:][::-1])
 
 
 @web_app.route('/api/kills', methods=['GET'])

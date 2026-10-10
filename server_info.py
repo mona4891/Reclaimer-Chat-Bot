@@ -20,13 +20,10 @@ import state
 
 
 def _pick(p: dict, *keys):
-    """First of `keys` present in the dict, else None. Newer Reclaimer
-    builds report per-player service tag / alive / health / shields /
-    time-since-death in `players`, but the exact key names aren't
-    documented, so each field below accepts a few plausible spellings
-    -- extend the tuples if your server's raw `players` reply uses
-    something else (send
-    `players` from the RCON client)."""
+    """First of `keys` present in the dict, else None. The documented
+    per-player keys are service_tag, alive, health, shields (native
+    fractions, 0..1) and seconds_since_last_death; the extra spellings
+    are only a safety net for other builds."""
     for k in keys:
         if k in p and p[k] is not None:
             return p[k]
@@ -46,6 +43,15 @@ def _num(value, default=0):
         return float(value) if "." in str(value) else int(value)
     except (TypeError, ValueError):
         return default
+
+
+def fmt_pct(fraction) -> str:
+    """Health and shields arrive as native fractions (1.0 = full), not
+    percentages. Returns e.g. "75%"."""
+    try:
+        return f"{round(float(fraction) * 100)}%"
+    except (TypeError, ValueError):
+        return str(fraction)
 
 
 def kill_id_matches(kill_id, player_id_hex: str) -> bool:
@@ -80,7 +86,10 @@ def resolve_kill_id(kill_id, players=None):
     """Player name for a kill event's killer/victim id. Checks `players`
     (if given), then names remembered from earlier polls -- so a kill is
     still attributed correctly if the player has since left, and kill
-    handling needs no RCON call of its own. None if never seen."""
+    handling needs no RCON call of its own. None if never seen (and for a
+    null id, which a kill event uses for an unidentified/world killer)."""
+    if kill_id is None:
+        return None
     for p in players or []:
         if kill_id_matches(kill_id, p.get("uid", "")):
             return p.get("name", "?")
@@ -125,8 +134,13 @@ def get_server_info() -> dict:
         alive = _pick(p, "alive", "is_alive", "isAlive")
         health = _pick(p, "health")
         shields = _pick(p, "shields", "shield")
-        since_death = _pick(p, "last_death", "last_died", "died_ago",
-                            "since_death", "time_since_death", "timeSinceDeath")
+        since_death = _pick(p, "seconds_since_last_death", "last_death", "last_died",
+                            "died_ago", "since_death", "time_since_death", "timeSinceDeath")
+        engine_id = p.get("engine_id")
+        if engine_id not in (None, ""):
+            entry["engineId"] = str(engine_id)
+        if p.get("guests"):
+            entry["guests"] = p.get("guests")
         if tag is not None:
             entry["serviceTag"] = tag
         if alive is not None:
@@ -138,13 +152,29 @@ def get_server_info() -> dict:
         if since_death is not None:
             entry["sinceDeath"] = since_death   # raw value as the server sends it
 
-    # Remember id -> name for kill-event attribution (see resolve_kill_id).
+    # Remember engine id -> name for kill-event attribution (see
+    # resolve_kill_id). `kill` events carry the same decimal engine ids as
+    # players.engine_id and guest_players.engine_id (split-screen guests).
     if len(_kill_name_cache) > 2000:
         _kill_name_cache.clear()
     for p in normalized_players:
-        kid = kill_id_for(p.get("uid", ""))
-        if kid is not None and p.get("name"):
-            _kill_name_cache[kid] = p["name"]
+        if not p.get("name"):
+            continue
+        for key in (p.get("engineId"), kill_id_for(p.get("uid", ""))):
+            try:
+                if key not in (None, ""):
+                    _kill_name_cache[int(key)] = p["name"]
+            except (TypeError, ValueError):
+                pass
+    for g in players_data.get("guest_players") or []:
+        if not isinstance(g, dict):
+            continue
+        try:
+            gid = int(g.get("engine_id"))
+        except (TypeError, ValueError):
+            continue
+        host = next((p["name"] for p in normalized_players if p.get("uid") == g.get("host_id")), "")
+        _kill_name_cache[gid] = g.get("name") or (f"{host} (guest)" if host else "Guest")
 
     # Reclaimer's status reply has no explicit "teams enabled" flag; infer
     # it from whether any connected player actually has a team assigned.
@@ -153,10 +183,12 @@ def get_server_info() -> dict:
     return {
         # Normalized to match the old ElDewrito shape so build_game_context()
         # and every background thread that checks status=="InGame"/"InLobby"
-        # keep working unchanged. Reclaimer only confirmed "playing" as a
-        # phase value during testing; anything else is treated as "not
-        # currently playing" rather than guessing at other phase names.
-        "status": "InGame" if status_data.get("phase") == "playing" else "InLobby",
+        # keep working unchanged. Documented phases: no_game, playing,
+        # round_over, between_rounds, finished. The three mid-game ones
+        # count as InGame so a multi-round match isn't summarised after
+        # every round; no_game and finished count as InLobby, which is what
+        # triggers the match summary when a game ends.
+        "status": "InGame" if status_data.get("phase") in ("playing", "round_over", "between_rounds") else "InLobby",
         "map": status_data.get("map", "unknown"),
         "variant": status_data.get("mode", "unknown"),
         "numPlayers": _num(status_data.get("players"), len(normalized_players)),
@@ -179,6 +211,10 @@ def get_server_info() -> dict:
         "playlist_vote": status_data.get("playlist_vote"),
         "password_required": status_data.get("password_required"),
         "hidden": status_data.get("hidden"),
+        "anti_cheat": status_data.get("anti_cheat"),
+        "anti_cheat_active": status_data.get("anti_cheat_active"),
+        "block_vpn": status_data.get("block_vpn"),
+        "max_ping": status_data.get("max_ping"),
     }
 
 
@@ -218,9 +254,9 @@ def build_game_context() -> str:
         if "isAlive" in p:
             line += " [ALIVE]" if p["isAlive"] else " [DEAD]"
         if p.get("isAlive") and "health" in p:
-            line += f" Health:{p.get('health')}"
+            line += f" Health:{fmt_pct(p.get('health'))}"
             if "shields" in p:
-                line += f" Shields:{p.get('shields')}"
+                line += f" Shields:{fmt_pct(p.get('shields'))}"
         if p.get("betrayals"):
             line += f" Betrayals:{p.get('betrayals')}"
         if p.get("suicides"):

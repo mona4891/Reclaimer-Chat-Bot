@@ -118,36 +118,38 @@ def handle(player_name: str, player_uid: str, cmd: str, args: list, mod_or_owner
         rcon.send_chat(msg)
 
     elif cmd == "kick" and args:
-        target_name, _ = server_info.get_target_name(args)
-        moderation_actions.do_kick(player_name, player_uid, target_name)
+        # !ai kick <player> [reason]
+        target_name, reason_start = server_info.get_target_name(args)
+        moderation_actions.do_kick(player_name, player_uid, target_name, " ".join(args[reason_start:]))
 
     elif cmd == "ban" and args:
-        target_name, _ = server_info.get_target_name(args)
-        moderation_actions.do_ban(player_name, player_uid, target_name)
+        # !ai ban <player> [time] [reason]   (a connected player's name)
+        # !ai ban <player ID | IP | range> [time] [reason]   (not connected)
+        if bans.looks_like_ban_target(args[0]):
+            target, rest = args[0], args[1:]
+        else:
+            target, start = server_info.get_target_name(args)
+            rest = args[start:]
+        duration = ""
+        if rest and bans.is_duration(rest[0]):
+            duration, rest = rest[0].lower(), rest[1:]
+        moderation_actions.do_ban(player_name, player_uid, target, " ".join(rest), duration)
 
     elif cmd == "tempban" and args:
-        try:
-            duration = int(args[-1])
+        # !ai tempban <player> [time]   (time: 90s/30m/12h/7d/2w, or plain minutes; default 5m)
+        duration = "5m"
+        name_args = args
+        if len(args) > 1 and (bans.is_duration(args[-1]) or args[-1].isdigit()):
+            duration = args[-1].lower() if bans.is_duration(args[-1]) else f"{int(args[-1])}m"
             name_args = args[:-1]
-        except ValueError:
-            duration = 5
-            name_args = args
-        if not name_args:
-            rcon.send_chat("Usage: !ai tempban <name> [minutes]")
-            return
         target_name, _ = server_info.get_target_name(name_args)
         moderation_actions.do_tempban(player_name, player_uid, target_name, duration)
 
     elif cmd == "unban" and args:
-        # Reclaimer's unban takes a player ID, IP, or range -- NOT a name
-        # (the banned player isn't connected for the server to resolve a
-        # name against). Take the raw argument as-is rather than trying
-        # get_target_name()'s connected-player name matching.
-        identifier = " ".join(args)
-        if bans.remove_ban(identifier, moderator=player_name):
-            rcon.send_chat(f"Unbanned {identifier}.")
-        else:
-            rcon.send_chat(f"Couldn't unban '{identifier}' — check the ID/IP with !ai banlist.")
+        # By name (if only one active ban has it), player ID, device
+        # fingerprint, IP or range. Take it as typed rather than trying
+        # get_target_name()'s connected-player matching.
+        moderation_actions.do_unban(player_name, " ".join(args))
 
     elif cmd == "banlist":
         active = bans.get_active_bans()
@@ -156,8 +158,9 @@ def handle(player_name: str, player_uid: str, cmd: str, args: list, mod_or_owner
         else:
             rcon.send_chat(f"Active bans ({len(active)}):")
             for ban in active[:5]:
-                exp = ban.get("expires_at") or "permanent"
-                rcon.send_chat(f"  {ban.get('name')} ({ban.get('uid', '?')}) — {exp}")
+                rcon.send_chat(f"  {ban.get('name')} ({ban.get('identifier') or '?'}) — {ban.get('expires_at') or 'permanent'}")
+            if len(active) > 5:
+                rcon.send_chat(f"  ...and {len(active) - 5} more (see the dashboard).")
 
     elif cmd == "warn" and len(args) >= 2:
         target_name, reason_start = server_info.get_target_name(args)
@@ -179,7 +182,7 @@ def handle(player_name: str, player_uid: str, cmd: str, args: list, mod_or_owner
             rcon.send_chat(f"@{target_name}: Warning {count}/{config.WARN_KICK_THRESHOLD} — {reason}. {remaining} left before action.")
         elif count == config.WARN_KICK_THRESHOLD:
             rcon.send_chat(f"{target_name} has been kicked after {count} warnings.")
-            rcon.send_command(f"kick {rcon.quote_if_needed(target_name)}")
+            rcon.send_command(f"kick {rcon.quote_if_needed(target_name)} {count} warnings")
 
     elif cmd == "warnings" and args:
         target_name, _ = server_info.get_target_name(args)
@@ -196,19 +199,17 @@ def handle(player_name: str, player_uid: str, cmd: str, args: list, mod_or_owner
             rcon.send_chat(f"No warnings found for '{target_name}'.")
 
     elif cmd == "mute" and args:
-        target_name, _ = server_info.get_target_name(args)
-        target_info = server_info.get_player_info(target_name)
-        target_uid = target_info.get("uid", "")
-        if target_uid and auth.is_protected(target_uid):
-            rcon.send_chat("I won't act against the server administrator.")
-            return
-        rcon.send_command(f"mute {rcon.quote_if_needed(target_name)}")
-        rcon.send_chat(f"{target_name} has been muted.")
+        # !ai mute <player> [time] [reason]
+        target_name, start = server_info.get_target_name(args)
+        rest = args[start:]
+        duration = ""
+        if rest and bans.is_duration(rest[0]):
+            duration, rest = rest[0].lower(), rest[1:]
+        moderation_actions.do_mute(player_name, player_uid, target_name, duration, " ".join(rest))
 
     elif cmd == "unmute" and args:
         target_name, _ = server_info.get_target_name(args)
-        rcon.send_command(f"unmute {rcon.quote_if_needed(target_name)}")
-        rcon.send_chat(f"{target_name} has been unmuted.")
+        moderation_actions.do_unmute(player_name, player_uid, target_name)
 
     elif cmd == "tell" and len(args) >= 2:
         target_name, msg_start = server_info.get_target_name(args)
@@ -230,6 +231,7 @@ def handle(player_name: str, player_uid: str, cmd: str, args: list, mod_or_owner
             "Commands: on/off/status/clear/cooldown/automod | "
             "tell/kick/ban/tempban/unban/banlist | "
             "warn/warnings/clearwarnings | mute/unmute | stats | "
-            "maps/modes/map/mode/load/nextmap | teamcount/shuffle | "
-            "startvote/passvote/cancelvote"
+            "maps/modes/map/mode/load/nextmap | teamcount/shuffle/team | "
+            "endround/endgame | vote/startvote/passvote/cancelvote | "
+            "maxping/vpn"
         )

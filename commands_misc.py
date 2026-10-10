@@ -144,9 +144,9 @@ def cmd_mystats(player_name: str, player_uid: str):
     if live:
         line += f" | Live: {live.get('kills', 0)}K/{live.get('deaths', 0)}D, score {live.get('score', 0)}"
         if live.get("isAlive") is True and "health" in live:
-            line += f", health {live.get('health')}"
+            line += f", health {server_info.fmt_pct(live.get('health'))}"
             if "shields" in live:
-                line += f"/shields {live.get('shields')}"
+                line += f"/shields {server_info.fmt_pct(live.get('shields'))}"
         elif live.get("isAlive") is False:
             line += ", currently dead"
 

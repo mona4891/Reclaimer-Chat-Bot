@@ -144,21 +144,24 @@ ADMIN_ONLY_CMDS = {
     "addmod", "removemod",
     "backup", "restore", "backuplist",
     "discord",
-    "servername", "password",   # RCON game control, owner only (commands_game.py)
 }
+
+# Owner-only RCON commands (dispatched to commands_game.handle_admin).
+GAME_ADMIN_CMDS = {"servername", "password", "vpnallow", "vpnrevoke"}
+ADMIN_ONLY_CMDS |= GAME_ADMIN_CMDS
 
 # Game-control commands backed by Reclaimer's RCON map/mode/team/vote
 # commands (see commands_game.py). Moderator+. Folded into MOD_CMDS below
 # so chat_watcher/command_router recognise them.
 GAME_CMDS = {
     "maps", "modes", "map", "mode", "load", "nextmap",
-    "teamcount", "shuffle",
-    "startvote", "passvote", "cancelvote",
+    "teamcount", "shuffle", "team",
+    "endround", "endgame",
+    "vote", "startvote", "passvote", "cancelvote",
+    "maxping", "vpn",
 }
 
-# RCON text sent for "!ai password clear". Reclaimer's clear syntax isn't
-# documented -- if the server rejects this (the bot relays its error), try
-# plain "password" instead.
+# RCON text sent for "!ai password clear" (documented: `password ""`).
 PASSWORD_CLEAR_COMMAND = 'password ""'
 
 # Log the raw JSON of every "kill" event the server pushes (one line per

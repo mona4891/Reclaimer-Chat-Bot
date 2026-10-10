@@ -44,6 +44,7 @@ the backlog arrives all at once). Chat events therefore get a thread each,
 and other events (e.g. "kill") go through one in-order worker queue each.
 """
 
+import contextlib
 import itertools
 import json
 import queue
@@ -70,6 +71,38 @@ _chat_handler = None   # set by chat_watcher.set_chat_handler()
 _event_handlers = {}   # event name -> handler(event_dict), see set_event_handler()
 _event_queues = {}     # event name -> queue feeding that event's worker thread
 _timed_out = set()     # ids of commands that timed out, so a late reply isn't logged as a mystery
+_auth_failures = 0     # consecutive wrong-password rejections (see connect_rcon / reconnect_rcon)
+
+# ── Who is acting ──
+# A command message may carry "by": a name that players read instead of "an
+# admin" ("Bravo was kicked by Alice.") and that the server's audit log
+# records as "Alice (RCON)". Set it for the current thread with
+# `with rcon.acting_as(name):` -- command_router does this for every chat
+# command, the dashboard for every action. Anything with no actor set
+# (auto-mod, AFK kicks) is attributed to the bot itself.
+_actor = threading.local()
+BY_COMMANDS = {
+    "kick", "ban", "banip", "unban", "mute", "unmute", "vpnallow", "vpnrevoke",
+    "startvote", "passvote", "cancelvote", "endround", "endgame",
+    "map", "mode", "load", "nextmap", "team", "setteam", "shuffle",
+    "shuffleteams", "teamcount", "servername", "password", "maxping",
+}
+
+
+@contextlib.contextmanager
+def acting_as(name):
+    previous = getattr(_actor, "name", None)
+    _actor.name = name
+    try:
+        yield
+    finally:
+        _actor.name = previous
+
+
+def _clean_by(name) -> str:
+    """One short printable line, since players read it in chat."""
+    text = "".join(ch for ch in str(name or "") if ch.isprintable()).strip()
+    return text[:32] or config.BOT_NAME
 
 
 def set_chat_handler(handler):
@@ -85,7 +118,9 @@ def set_event_handler(event_name: str, handler):
     """Register handler(event_dict) for any other pushed event type, e.g.
     set_event_handler("kill", fn). The handler gets the raw decoded JSON
     message so callers can read whichever fields the server actually
-    sends. Chat keeps its own split-argument handler above. Events of
+    sends; the name "*" registers a catch-all for every event type that has
+    no handler of its own. Chat keeps its own split-argument handler
+    above. Events of
     one type are handled in order on their own worker thread (never on
     the reader thread -- see the module docstring)."""
     _event_handlers[event_name] = handler
@@ -164,9 +199,15 @@ def _reader_loop(my_ws):
                         daemon=True,
                     ).start()
             else:
-                q = _event_queues.get(event_name)
+                # A handler registered for this exact event, else the
+                # catch-all registered as "*" (joins, kicks, votes...).
+                q = _event_queues.get(event_name) or _event_queues.get("*")
                 if q is not None:
                     q.put(msg)
+            continue
+
+        if msg_type == "lagged":
+            logger.warning(f"[RCON] Fell behind the event stream; missed {msg.get('missed')} events.")
             continue
 
         if msg_type in ("reply", "error"):
@@ -189,7 +230,7 @@ def _reader_loop(my_ws):
 
 
 def connect_rcon() -> bool:
-    global ws, ws_connected, _reader_thread
+    global ws, ws_connected, _reader_thread, _auth_failures
     logger.info(f"[RCON] Connecting to ws://{config.RCON_HOST}:{state.RCON_PORT}/ ...")
     try:
         new_ws = create_connection(
@@ -200,11 +241,20 @@ def connect_rcon() -> bool:
         new_ws.settimeout(10)
         auth_reply = json.loads(new_ws.recv())
         if not auth_reply.get("ok"):
-            logger.error(f"[RCON] Auth rejected: {auth_reply}")
             new_ws.close()
             ws_connected = False
+            if auth_reply.get("full"):
+                # Not a password problem: the server allows 4 signed-in tools.
+                logger.error(f"[RCON] Console is full (4 tools already signed in): {auth_reply.get('error')}")
+            else:
+                _auth_failures += 1
+                logger.error(
+                    f"[RCON] Sign-in rejected ({auth_reply.get('error')}). Check RCON_PASSWORD. "
+                    f"Five wrong passwords from one address lock it out for ten minutes."
+                )
             return False
 
+        _auth_failures = 0
         new_ws.settimeout(None)  # reader thread blocks on recv() indefinitely
         with ws_lock:
             old_ws = ws
@@ -219,7 +269,7 @@ def connect_rcon() -> bool:
                 pass
         server_name = auth_reply.get("server", "?")
         version = auth_reply.get("version", "?")
-        logger.info(f"[RCON] Connected and authenticated to '{server_name}' (server v{version}).")
+        logger.info(f"[RCON] Connected and authenticated to '{server_name}' (server v{version}, protocol {auth_reply.get('protocol', '?')}).")
 
         _reader_thread = threading.Thread(target=_reader_loop, args=(new_ws,), daemon=True)
         _reader_thread.start()
@@ -234,9 +284,21 @@ def reconnect_rcon():
     while True:
         time.sleep(15)
         if not ws_connected:
+            if _auth_failures >= 3:
+                # The server locks an address out after five wrong passwords
+                # within ten minutes, right password or not. Stop hammering it.
+                logger.error("[RCON] Three sign-ins in a row were rejected. Pausing reconnects for 11 minutes; "
+                             "fix RCON_PASSWORD (and restart the bot) to avoid a lockout.")
+                time.sleep(11 * 60)
+                _reset_auth_failures()
             logger.info("[RCON] Attempting reconnect...")
             if connect_rcon():
                 send_chat(f"{config.BOT_NAME} reconnected.")
+
+
+def _reset_auth_failures():
+    global _auth_failures
+    _auth_failures = 0
 
 
 def quote_if_needed(value: str) -> str:
@@ -271,7 +333,11 @@ def send_command_full(command: str, timeout: float = 8.0, keep_errors: bool = Fa
         _pending[req_id] = entry
 
     try:
-        payload = json.dumps({"type": "command", "command": command, "id": req_id})
+        message = {"type": "command", "command": command, "id": req_id}
+        first_word = command.split(None, 1)[0].lower() if command.strip() else ""
+        if first_word in BY_COMMANDS:
+            message["by"] = _clean_by(getattr(_actor, "name", None))
+        payload = json.dumps(message)
         with ws_lock:
             ws.send(payload)
     except Exception as e:

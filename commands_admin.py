@@ -19,7 +19,7 @@ def handle(player_name: str, player_uid: str, cmd: str, args: list):
         rcon.send_chat(f"@{player_name}: That command is restricted to the server owner.")
         return
 
-    if cmd in ("servername", "password"):
+    if cmd in config.GAME_ADMIN_CMDS:
         commands_game.handle_admin(player_name, player_uid, cmd, args)
         return
 

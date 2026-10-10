@@ -50,6 +50,12 @@ afk_tracker = {}
 # by chat_watcher._on_kill_event() and served to the dashboard at
 # /api/kills. Each entry: {"time", "killer", "victim", "suicide", "report"}.
 kill_feed = deque(maxlen=100)
+
+# Recent server events other than chat and kills (joins, leaves, kicks,
+# bans, mutes, votes, phase changes, anti-cheat flags, action results),
+# newest last. Filled by chat_watcher._on_other_event() and served to the
+# dashboard at /api/activity. Each entry: {"time", "event", "summary"}.
+activity = deque(maxlen=200)
 last_game_status = ""
 first_blood_given = False
 
